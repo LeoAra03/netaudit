@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<p>Upload a FortiGate or Cisco IOS configuration and it is audited against the
+  baseline rulepack for that vendor. Nothing is run, nothing leaves this box.</p>
+<form class="card" method="post" action="/scan" enctype="multipart/form-data">
+  <p><input type="file" name="file" required accept=".conf,.txt,.cfg"></p>
+  <p>
+    <label for="rulepack">Rulepack</label>
+    <select id="rulepack" name="rulepack">
+      <option value="auto">auto (by vendor)</option>
+      <option value="fortigate">fortigate</option>
+      <option value="cisco">cisco</option>
+    </select>
+  </p>
+  <button type="submit">Run audit</button>
+</form>
+{% if scans %}
+<h2 style="font-size:1rem">Recent scans</h2>
+<table>
+  <tr><th>file</th><th>vendor</th><th>score</th><th>when</th></tr>
+  {% for scan in scans %}
+  <tr>
+    <td><a href="/scans/{{ scan.id }}">{{ scan.filename }}</a></td>
+    <td class="muted">{{ scan.vendor }}</td>
+    <td class="muted">{{ scan.score }}/100 ({{ scan.grade }})</td>
+    <td class="muted">{{ scan.created_at }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}
