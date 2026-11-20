@@ -166,3 +166,57 @@ def test_bundled_rulepacks_all_load(fixtures_dir: Path) -> None:
     assert load_rulepack("fortigate")
     assert load_rulepack("cisco")
     assert fixtures_dir.is_dir()
+
+
+def test_available_packs_lists_the_bundled_ones() -> None:
+    assert rulepacks.available_packs() == ["cisco", "fortigate"]
+
+
+def test_per_object_reports_each_interface() -> None:
+    raw = (
+        "config system interface\n"
+        '    edit "port1"\n        set allowaccess ping http\n    next\n'
+        '    edit "port2"\n        set allowaccess http\n    next\n'
+        "end\n"
+    )
+    config = parser.parse(raw, "fortigate")
+    rules = [r for r in load_rulepack("fortigate") if r.id == "FG-003"]
+
+    assert len(engine.evaluate(config, rules)) == 1
+    findings = engine.evaluate(config, rules, per_object=True)
+    assert [f.evidence.split("]")[0] + "]" for f in findings] == ["[port1]", "[port2]"]
+
+
+def test_per_object_collapses_lines_on_the_same_object(config_text: Callable[[str], str]) -> None:
+    """srcaddr and dstaddr are both ``all`` on policy 1: one problem, one finding."""
+
+    config = parser.parse(config_text("fortigate_bad.conf"), "fortigate")
+    rules = [r for r in load_rulepack("fortigate") if r.id == "FG-009"]
+    assert len(engine.evaluate(config, rules, per_object=True)) == 1
+
+
+def test_per_object_keeps_an_absent_statement_to_one_finding(
+    config_text: Callable[[str], str],
+) -> None:
+    findings = engine.evaluate(
+        parser.parse(config_text("cisco_bad.conf"), "cisco"),
+        load_rulepack("cisco"),
+        per_object=True,
+    )
+    assert len([f for f in findings if f.rule_id == "CS-006"]) == 1
+
+
+def test_per_object_costs_more_score_than_one_per_rule() -> None:
+    raw = (
+        "config system interface\n"
+        '    edit "p1"\n        set allowaccess http\n    next\n'
+        '    edit "p2"\n        set allowaccess http\n    next\n'
+        '    edit "p3"\n        set allowaccess http\n    next\n'
+        "end\n"
+    )
+    config = parser.parse(raw, "fortigate")
+    rules = [r for r in load_rulepack("fortigate") if r.id == "FG-003"]
+    collapsed = scoring.score(engine.evaluate(config, rules))
+    per_object = scoring.score(engine.evaluate(config, rules, per_object=True))
+    assert collapsed == 95
+    assert per_object == 85

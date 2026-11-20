@@ -65,6 +65,12 @@ def _build(raw: dict[str, Any]) -> Rule:
     )
 
 
+def available_packs() -> list[str]:
+    """Names of the bundled rulepacks, sorted, without the ``.yaml`` suffix."""
+
+    return sorted(path.stem for path in RULEPACK_DIR.glob("*.yaml"))
+
+
 def load_rulepack(name: str) -> list[Rule]:
     path = RULEPACK_DIR / f"{name}.yaml"
     if not path.exists():
