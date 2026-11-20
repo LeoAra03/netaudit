@@ -11,6 +11,12 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Leonardo Araya" }]
 keywords = ["security", "network", "hardening", "fortigate", "cisco", "sarif"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+]
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
@@ -33,9 +39,43 @@ dev = [
 [project.scripts]
 netaudit = "netaudit.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/LeoAra03/netaudit"
+Issues = "https://github.com/LeoAra03/netaudit/issues"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/netaudit"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+# File(...) / Form(...) defaults are the FastAPI idiom for dependency injection.
+"src/netaudit/api.py" = ["B008"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+mypy_path = "src"
+packages = ["netaudit"]
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["yaml.*", "jinja2.*"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["netaudit"]
+omit = ["src/netaudit/cli.py"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if __name__ =="]
