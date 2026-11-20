@@ -21,7 +21,7 @@ by hand. If that changes, this file changes with it.
 
 | Threat | Mitigation |
 |---|---|
-| Oversized upload exhausts memory | 2 MiB cap checked on the raw bytes before parsing |
+| Oversized upload exhausts memory | 2 MiB cap, and the body is read one byte past it rather than buffered whole before the check |
 | Binary or non-UTF-8 input | decode with `errors="replace"`; the parser tolerates junk |
 | Parser crash on malformed config | tolerant line parsing, no exception path for unknown syntax |
 | Unbounded config work | one file per request, no recursion, single worker, `pids_limit` in compose |

@@ -39,15 +39,22 @@ netaudit scan device.conf --format json
 netaudit scan device.conf --format sarif > out.sarif
 netaudit scan device.conf --format markdown
 netaudit scan device.conf --fail-under 80        # exit 1 below threshold
+netaudit scan device.conf --per-object           # one finding per bad interface/policy
+netaudit rules                                   # every check a rulepack runs
+netaudit rules --pack fortigate --format json
 ```
 
 Exit codes: `0` clean or above the threshold, `1` below `--fail-under`, `2` unreadable
-file or undetectable vendor.
+file, undetectable vendor, a `--fail-under` outside 0-100, or a `--rulepack` that does not
+match the vendor the file was detected as (the other vendor's pack would find none of its
+own markers and report every `expect: present` rule as missing).
 
 ## HTTP API
 
 ```bash
 curl -F 'file=@tests/fixtures/cisco_bad.conf' -F 'fail_under=90' localhost:8000/api/scans
+curl -F 'file=@tests/fixtures/fortigate_bad.conf' -F 'per_object=true' localhost:8000/api/scans
+curl -s 'localhost:8000/api/scans?limit=25'
 curl -s localhost:8000/scans/<id>/report.sarif
 ```
 
@@ -55,10 +62,15 @@ curl -s localhost:8000/scans/<id>/report.sarif
 |---|---|
 | `POST /api/scans` | JSON with `score`, `grade`, `findings`, `id` (422 if below `fail_under`) |
 | `POST /scan` | same audit from a browser form, redirects to the report |
+| `GET /api/scans?limit=N` | recent scans, newest first (`limit` 1-100, default 10) |
 | `GET /scans/{id}` | HTML report |
 | `GET /scans/{id}/report.md` | Markdown for a ticket or a wiki |
 | `GET /scans/{id}/report.sarif` | SARIF 2.1.0 for code scanning |
 | `GET /healthz` | liveness probe used by the container and by Azure |
+
+`per_object=true` (also `--per-object` on the CLI) reports once per object instead of
+once per rule. Uploads are read one byte past the 2 MiB cap, never buffered whole.
+
 
 Interactive docs at `/docs` while the server is up.
 
@@ -77,9 +89,14 @@ Interactive docs at `/docs` while the server is up.
 | FG-009 | medium | firewall policy permits any-any |
 | CS-001 | high | VTY lines accept telnet |
 | CS-002 | medium | HTTP server enabled |
+| CS-003 | low | default SNMP community |
 | CS-004 | medium | `service password-encryption` absent |
 | CS-005 | high | AAA not enabled |
+| CS-006 | low | no syslog host configured |
 | CS-007 | high | cleartext password on a local user |
+
+`netaudit rules` prints this table from the packs themselves, with the scope and the
+`expect` direction each rule uses.
 
 Full lists, including the reference each rule came from, live in
 [`src/netaudit/rulepacks/`](src/netaudit/rulepacks). A rule looks like this:
@@ -98,11 +115,18 @@ catches a missing `aaa new-model`). `id`, `severity`, `match`, `expect` and `sco
 validated when the pack loads, so a typo fails the run instead of quietly reporting a
 clean device.
 
+Paths are structural, never a keyword list: a Cisco line's parents are the enclosing lines
+indented less than it, so the children of `crypto map`, `ip dhcp pool`, `ip sla`,
+`monitor session` or anything else stay inside their block, and `policy-map > class >
+command` keeps both levels. On FortiGate, evidence names every enclosing `edit`, so a
+secondary IP reads `[port1/9]` instead of `[9]`.
+
 ## Scoring
 
 Each finding carries a weight (info 1, low 2, medium 5, high 10, critical 20). The score
 is `max(0, 100 - total weight)`, graded A to F. It is deterministic and deliberately
-crude: it is a triage order, not a compliance statement.
+crude: it is a triage order, not a compliance statement. With `--per-object` the weight is
+paid per object, so five exposed interfaces cost five times one exposed interface.
 
 ## Architecture
 
@@ -151,8 +175,9 @@ I would rather list these than have someone find them:
 - Regex heuristics produce false positives and false negatives; every rule has a fixture,
   but the fixtures are not the whole protocol.
 - The rulepacks are my reading of hardening guidance, not certified CIS benchmarks.
-- Findings collapse per rule, not per object: a config with five bad interfaces gives one
-  FG-003 with the first piece of evidence.
+- Findings collapse per rule by default, so a config with five bad interfaces gives one
+  FG-003 with the first piece of evidence. `--per-object` / `per_object=true` reports each
+  of them separately; per-object is not the default because it changes the score.
 - SQLite plus a single worker. No horizontal scale.
 - No auth, no rate limiting, no retention policy. Do not expose this to the internet with
   real configs on disk. See [docs/threat-model.md](docs/threat-model.md).
@@ -161,14 +186,14 @@ I would rather list these than have someone find them:
 
 - [ ] Auth and per-user history
 - [ ] Diff between two snapshots of the same device
-- [ ] Per-object aggregation, so each bad interface is its own finding
+- [x] Per-object aggregation (`--per-object`), so each bad interface is its own finding
 - [ ] `regex_timeout` guard for catastrophic patterns on hostile input
 - [ ] Postgres backend for multi-worker deployments
 - [ ] A device connector that pulls a running-config behind a jump host
 
 ## Tests
 
-67 tests, 100% coverage on the library (the CLI is exercised through its exit codes and
+102 tests, 100% coverage on the library (the CLI is exercised through its exit codes and
 excluded from the coverage number on purpose).
 
 ```bash
