@@ -5,10 +5,48 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable
+from pathlib import Path
+from urllib.parse import quote
 
+from . import __version__
 from .models import Finding
 
 _SARIF_LEVEL = {"CRITICAL": "error", "HIGH": "error", "MEDIUM": "warning"}
+
+# GitHub reads "security-severity" to bucket a rule, and ignores the SARIF level
+# for that; the numbers are the CVSS-style bands its docs use.
+_SECURITY_SEVERITY = {
+    "CRITICAL": "9.5",
+    "HIGH": "8.0",
+    "MEDIUM": "5.5",
+    "LOW": "3.0",
+    "INFO": "0.0",
+}
+
+
+def _code(text: str) -> str:
+    """A Markdown code span that survives backticks inside the evidence."""
+
+    fence = "``" if "`" in text else "`"
+    return f"{fence}{text}{fence}"
+
+
+def _artifact_uri(filename: str) -> str:
+    """A URI a code-scanning upload can actually resolve.
+
+    ``artifactLocation.uri`` is an RFC 3986 reference, not a filesystem path: a
+    space in the name (or a Windows drive letter) makes the document invalid,
+    and an absolute path is meaningless to the repository the results land in.
+    Report paths relative to the working directory when they are inside it, and
+    fall back to a ``file:`` URI otherwise.
+    """
+
+    path = Path(filename)
+    try:
+        relative = path.resolve().relative_to(Path.cwd().resolve())
+    except ValueError:
+        return path.expanduser().resolve().as_uri()
+    return quote(relative.as_posix(), safe="/")
 
 
 def markdown(
@@ -16,7 +54,7 @@ def markdown(
 ) -> str:
     items = list(findings)
     lines = [
-        f"# NetAudit report - `{filename}`",
+        f"# NetAudit report - {_code(filename)}",
         "",
         f"- Vendor: **{vendor}**",
         f"- Score: **{score}/100** (grade **{grade}**)",
@@ -29,7 +67,7 @@ def markdown(
         lines += [
             f"## [{finding.severity.name}] {finding.rule_id} - {finding.title}",
             "",
-            f"- Evidence: `{finding.evidence}`",
+            f"- Evidence: {_code(finding.evidence)}",
             f"- Remediation: {finding.remediation}",
             f"- Reference: {finding.reference}",
             "",
@@ -45,30 +83,39 @@ def sarif(filename: str, findings: Iterable[Finding]) -> str:
     """
 
     items = list(findings)
-    rules = {
-        f.rule_id: {
-            "id": f.rule_id,
-            "shortDescription": {"text": f.title},
-            "fullDescription": {"text": f"{f.title} ({f.severity.name})"},
-            "help": {"text": f.remediation},
-            "defaultConfiguration": {"level": _SARIF_LEVEL.get(f.severity.name, "note")},
-            "properties": {"tags": ["netaudit", f.severity.name.lower()], "precision": "medium"},
-        }
-        for f in items
-    }
+    uri = _artifact_uri(filename)
+    rules: list[dict[str, object]] = []
+    rule_index: dict[str, int] = {}
+    for finding in items:
+        if finding.rule_id in rule_index:
+            continue
+        rule_index[finding.rule_id] = len(rules)
+        rules.append(
+            {
+                "id": finding.rule_id,
+                "shortDescription": {"text": finding.title},
+                "fullDescription": {"text": f"{finding.title} ({finding.severity.name})"},
+                "help": {"text": finding.remediation},
+                "defaultConfiguration": {"level": _SARIF_LEVEL.get(finding.severity.name, "note")},
+                "properties": {
+                    "tags": ["netaudit", finding.severity.name.lower()],
+                    "precision": "medium",
+                    "security-severity": _SECURITY_SEVERITY.get(finding.severity.name, "0.0"),
+                },
+            }
+        )
     results = []
-    for f in items:
-        fingerprint = hashlib.sha256(f"{f.rule_id}|{filename}|{f.evidence}".encode()).hexdigest()[
-            :40
-        ]
+    for finding in items:
+        fingerprint = hashlib.sha256(
+            f"{finding.rule_id}|{uri}|{finding.evidence}".encode()
+        ).hexdigest()[:40]
         results.append(
             {
-                "ruleId": f.rule_id,
-                "level": _SARIF_LEVEL.get(f.severity.name, "note"),
-                "message": {"text": f"{f.title}. {f.remediation}"},
-                "locations": [
-                    {"physicalLocation": {"artifactLocation": {"uri": filename.replace("\\", "/")}}}
-                ],
+                "ruleId": finding.rule_id,
+                "ruleIndex": rule_index[finding.rule_id],
+                "level": _SARIF_LEVEL.get(finding.severity.name, "note"),
+                "message": {"text": f"{finding.title}. {finding.remediation}"},
+                "locations": [{"physicalLocation": {"artifactLocation": {"uri": uri}}}],
                 "partialFingerprints": {"primaryLocationLineHash": fingerprint},
             }
         )
@@ -81,8 +128,8 @@ def sarif(filename: str, findings: Iterable[Finding]) -> str:
                     "driver": {
                         "name": "netaudit",
                         "informationUri": "https://github.com/LeoAra03/netaudit",
-                        "version": "0.1.0",
-                        "rules": list(rules.values()),
+                        "version": __version__,
+                        "rules": rules,
                     }
                 },
                 "results": results,

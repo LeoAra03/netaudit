@@ -83,6 +83,11 @@ def get_scan(scan_id: str) -> dict[str, Any] | None:
 
 
 def recent(limit: int = 10) -> list[dict[str, Any]]:
+    """Newest scans first. ``limit`` is validated: SQLite reads ``LIMIT -1`` as
+    "no limit", so an unchecked value would dump the whole table."""
+
+    if limit < 1:
+        raise ValueError(f"limit must be >= 1, got {limit}")
     with _connect() as conn:
         rows = conn.execute(
             "SELECT id, filename, vendor, score, grade, created_at FROM scans"

@@ -8,11 +8,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from . import engine, parser, reporters, scoring, store
+from . import __version__, engine, parser, reporters, scoring, store
 from .models import Finding, Severity
 from .rulepacks import load_rulepack
 
@@ -30,7 +30,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="NetAudit",
-    version="0.1.0",
+    version=__version__,
     summary="Configuration hardening auditor for FortiGate and Cisco IOS",
     description=(
         "Upload a device configuration, get scored findings with remediation. "
@@ -40,7 +40,21 @@ app = FastAPI(
 )
 
 
-def analyse(filename: str, payload: bytes, pack: str) -> dict[str, Any]:
+async def _read_upload(file: UploadFile) -> bytes:
+    """Read one byte past the limit instead of buffering whatever was posted.
+
+    ``await file.read()`` pulls the whole body into memory before the size check
+    runs, so a 4 GB upload is 4 GB of RAM in a container that is not sized for
+    it. Reading ``MAX + 1`` is enough to know the upload is too big.
+    """
+
+    payload = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(payload) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"config exceeds {MAX_UPLOAD_BYTES} bytes")
+    return payload
+
+
+def analyse(filename: str, payload: bytes, pack: str, per_object: bool = False) -> dict[str, Any]:
     """Run one audit and persist it. Shared by the HTML form and the JSON API."""
 
     if len(payload) > MAX_UPLOAD_BYTES:
@@ -60,7 +74,7 @@ def analyse(filename: str, payload: bytes, pack: str) -> dict[str, Any]:
     selected = vendor if requested in {"", "auto"} else requested
     try:
         config = parser.parse(raw, vendor)
-        findings = engine.evaluate(config, load_rulepack(selected))
+        findings = engine.evaluate(config, load_rulepack(selected), per_object=per_object)
     except ValueError as exc:  # RulepackError is a ValueError
         raise HTTPException(400, str(exc)) from exc
 
@@ -110,8 +124,12 @@ def index(request: Request) -> Response:
 
 
 @app.post("/scan")
-async def scan_form(file: UploadFile = File(...), rulepack: str = Form("auto")) -> Response:
-    record = analyse(file.filename or "upload.conf", await file.read(), rulepack)
+async def scan_form(
+    file: UploadFile = File(...),
+    rulepack: str = Form("auto"),
+    per_object: bool = Form(False),
+) -> Response:
+    record = analyse(file.filename or "upload.conf", await _read_upload(file), rulepack, per_object)
     return RedirectResponse(f"/scans/{record['id']}", status_code=303)
 
 
@@ -119,19 +137,22 @@ async def scan_form(file: UploadFile = File(...), rulepack: str = Form("auto")) 
 async def scan_api(
     file: UploadFile = File(...),
     rulepack: str = Form("auto"),
-    fail_under: int | None = Form(None),
+    fail_under: int | None = Form(None, ge=0, le=100),
+    per_object: bool = Form(False),
 ) -> Response:
     """JSON scan endpoint. Returns 422 when ``fail_under`` is not reached."""
 
-    record = analyse(file.filename or "upload.conf", await file.read(), rulepack)
+    record = analyse(file.filename or "upload.conf", await _read_upload(file), rulepack, per_object)
     status = 422 if fail_under is not None and record["score"] < fail_under else 200
     body = {key: record[key] for key in ("id", "vendor", "score", "grade", "findings")}
     return Response(json.dumps(body, indent=2), media_type="application/json", status_code=status)
 
 
 @app.get("/api/scans")
-def list_scans() -> Response:
-    return Response(json.dumps({"scans": store.recent()}, indent=2), media_type="application/json")
+def list_scans(limit: int = Query(10, ge=1, le=100)) -> Response:
+    return Response(
+        json.dumps({"scans": store.recent(limit)}, indent=2), media_type="application/json"
+    )
 
 
 @app.get("/scans/{scan_id}", response_class=HTMLResponse)

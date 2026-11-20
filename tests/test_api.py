@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from netaudit import store
+from netaudit import api, store
 from netaudit.parser import MAX_BYTES
 
 
@@ -21,6 +23,10 @@ def _post(
     data = {"rulepack": rulepack}
     if fail_under is not None:
         data["fail_under"] = str(fail_under)
+    return _post_raw(client, fixtures_dir, name, data)
+
+
+def _post_raw(client: TestClient, fixtures_dir: Path, name: str, data: dict[str, str]):
     with open(fixtures_dir / name, "rb") as handle:
         return client.post(
             "/api/scans",
@@ -172,3 +178,89 @@ def test_failed_insert_rolls_back() -> None:
     with pytest.raises(KeyError):
         store.save_scan({"filename": "x.conf"})
     assert store.recent() == []
+
+
+def test_recent_rejects_a_non_positive_limit() -> None:
+    """SQLite reads ``LIMIT -1`` as "no limit", so an unchecked value dumps the table."""
+
+    store.init_db()
+    for limit in (0, -1):
+        with pytest.raises(ValueError, match="limit must be >= 1"):
+            store.recent(limit)
+
+
+def test_list_scans_honours_and_validates_limit(client: TestClient, fixtures_dir: Path) -> None:
+    for _ in range(3):
+        _post(client, fixtures_dir, "cisco_good.conf")
+    assert len(client.get("/api/scans").json()["scans"]) == 3
+    assert len(client.get("/api/scans", params={"limit": 2}).json()["scans"]) == 2
+    assert client.get("/api/scans", params={"limit": 0}).status_code == 422
+    assert client.get("/api/scans", params={"limit": 101}).status_code == 422
+
+
+def test_per_object_form_field_doubles_the_findings(client: TestClient) -> None:
+    device = (
+        b"config system interface\n"
+        b'    edit "p1"\n        set allowaccess http\n    next\n'
+        b'    edit "p2"\n        set allowaccess http\n    next\n'
+        b"end\n"
+    )
+    collapsed = client.post("/api/scans", files={"file": ("fw.conf", device, "text/plain")})
+    per_object = client.post(
+        "/api/scans",
+        files={"file": ("fw.conf", device, "text/plain")},
+        data={"per_object": "true"},
+    )
+    assert collapsed.status_code == per_object.status_code == 200
+    http_collapsed = [f for f in collapsed.json()["findings"] if f["rule_id"] == "FG-003"]
+    http_per_object = [f for f in per_object.json()["findings"] if f["rule_id"] == "FG-003"]
+    assert len(http_collapsed) == 1
+    assert len(http_per_object) == 2
+    assert per_object.json()["score"] < collapsed.json()["score"]
+
+
+@pytest.mark.parametrize("value", ["-1", "101"])
+def test_fail_under_outside_the_score_range_is_rejected(
+    client: TestClient, fixtures_dir: Path, value: str
+) -> None:
+    response = _post_raw(client, fixtures_dir, "cisco_good.conf", {"fail_under": value})
+    assert response.status_code == 422
+
+
+class _RecordingUpload:
+    """Minimal stand-in for ``UploadFile`` that records the size it was asked for."""
+
+    def __init__(self, payload: bytes) -> None:
+        self.payload = payload
+        self.requested: int | None = None
+
+    async def read(self, size: int = -1) -> bytes:
+        self.requested = size
+        return self.payload[:size]
+
+
+def test_upload_is_read_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``await file.read()`` buffered whatever was posted before the size check."""
+
+    monkeypatch.setattr(api, "MAX_UPLOAD_BYTES", 16)
+    small = _RecordingUpload(b"config\n")
+    assert asyncio.run(api._read_upload(small)) == b"config\n"
+    assert small.requested == 17
+
+    big = _RecordingUpload(b"#" * 64)
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(api._read_upload(big))
+    assert exc_info.value.status_code == 413
+    assert big.requested == 17
+
+
+def test_analyse_still_refuses_oversize_payloads_it_is_handed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The endpoint reads in bounds now, but ``analyse`` is the shared entry
+    point and must not trust its caller."""
+
+    monkeypatch.setattr(api, "MAX_UPLOAD_BYTES", 16)
+    with pytest.raises(HTTPException) as exc_info:
+        api.analyse("big.conf", b"#" * 32, "auto")
+    assert exc_info.value.status_code == 413
