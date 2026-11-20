@@ -1,0 +1,56 @@
+version: 1
+name: cisco-ios-baseline
+vendor: cisco
+rules:
+  - id: CS-001
+    title: VTY lines accept telnet
+    severity: high
+    scope: ["line vty*"]
+    match: '^line vty[^|]*\|transport=input\b.*(telnet|all)'
+    remediation: "transport input ssh"
+    reference: "CIS Cisco IOS Benchmark - VTY access"
+
+  - id: CS-002
+    title: HTTP server enabled
+    severity: medium
+    match: '^\|ip=http server$'
+    remediation: "no ip http server; prefer ip http secure-server if a GUI is really needed."
+    reference: "CIS Cisco IOS Benchmark - HTTP server"
+
+  - id: CS-003
+    title: Default SNMP community
+    severity: low
+    match: '^\|snmp-server=community (public|private)( |$)'
+    remediation: "Use a non-default community and attach an ACL to it."
+    reference: "CIS Cisco IOS Benchmark - SNMP"
+
+  - id: CS-004
+    title: service password-encryption absent
+    severity: medium
+    match: '^\|service=password-encryption$'
+    expect: present
+    remediation: "service password-encryption"
+    reference: "CIS Cisco IOS Benchmark - password storage"
+
+  - id: CS-005
+    title: AAA not enabled
+    severity: high
+    match: '^\|aaa=new-model$'
+    expect: present
+    remediation: "Enable aaa new-model and point it at TACACS+ or RADIUS."
+    reference: "CIS Cisco IOS Benchmark - authentication"
+
+  - id: CS-006
+    title: No syslog host configured
+    severity: low
+    match: '^\|logging=host '
+    expect: present
+    remediation: "logging host <syslog-server>"
+    reference: "CIS Cisco IOS Benchmark - logging"
+
+  - id: CS-007
+    title: Cleartext password on local user
+    severity: high
+    match: '^\|username=.*\spassword\s\S'
+    remediation: "Use username <name> secret <hash> instead of a type-0 password."
+    reference: "CIS Cisco IOS Benchmark - local users"

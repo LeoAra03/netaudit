@@ -1,0 +1,75 @@
+version: 1
+name: fortigate-baseline
+vendor: fortigate
+rules:
+  - id: FG-001
+    title: Telnet administration enabled
+    severity: high
+    scope: ["system.global"]
+    match: '^system\.global\|admin-telnet=enable'
+    remediation: "set admin-telnet disable; keep SSH and HTTPS only."
+    reference: "CIS FortiGate Benchmark - administrative access"
+
+  - id: FG-002
+    title: Legacy TLS allowed on admin GUI
+    severity: medium
+    scope: ["system.global"]
+    match: 'admin-https-ssl-versions=tlsv1-0|admin-https-ssl-versions=tlsv1-1'
+    remediation: "set admin-https-ssl-versions tlsv1-2 tlsv1-3"
+    reference: "CIS FortiGate Benchmark - GUI TLS"
+
+  - id: FG-003
+    title: Plain HTTP allowed on an interface
+    severity: medium
+    scope: ["system.interface"]
+    match: '^system\.interface\|allowaccess=.*\bhttp\b'
+    remediation: "Remove http from allowaccess and redirect to HTTPS."
+    reference: "CIS FortiGate Benchmark - interface access"
+
+  - id: FG-004
+    title: Default SNMP community name
+    severity: low
+    scope: ["system.snmp.community"]
+    match: '^system\.snmp\.community\|(community|name)=public'
+    remediation: "Use a non-default community string and restrict the hosts that may query it."
+    reference: "CIS FortiGate Benchmark - SNMP"
+
+  - id: FG-005
+    title: Password policy block missing
+    severity: medium
+    match: '^\|config=system\.password-policy$'
+    expect: present
+    remediation: "Add a config system password-policy block with status enable."
+    reference: "CIS FortiGate Benchmark - password policy"
+
+  - id: FG-006
+    title: Password policy disabled
+    severity: high
+    scope: ["system.password-policy"]
+    match: '^system\.password-policy\|status=disable'
+    remediation: "set status enable under config system password-policy."
+    reference: "CIS FortiGate Benchmark - password policy"
+
+  - id: FG-007
+    title: Admin trusted host unrestricted
+    severity: high
+    scope: ["system.admin"]
+    match: 'trusthost[0-9]+=0\.0\.0\.0 0\.0\.0\.0'
+    remediation: "Restrict trusthost to the management subnet."
+    reference: "CIS FortiGate Benchmark - trusted hosts"
+
+  - id: FG-008
+    title: Logging disabled
+    severity: medium
+    scope: ["log.setting"]
+    match: '^log\.setting\|status=disable'
+    remediation: "set status enable under config log setting."
+    reference: "CIS FortiGate Benchmark - logging"
+
+  - id: FG-009
+    title: Firewall policy permits any-any
+    severity: medium
+    scope: ["firewall.policy"]
+    match: '^firewall\.policy\|(srcaddr|dstaddr)=all'
+    remediation: "Narrow source and destination on policies that use all."
+    reference: "CIS FortiGate Benchmark - policy scope"
