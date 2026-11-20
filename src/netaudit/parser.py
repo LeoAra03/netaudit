@@ -16,6 +16,8 @@ MAX_BYTES = 2 * 1024 * 1024
 
 _FG_OPEN = re.compile(r"^config\s+(?P<path>.+?)\s*$")
 _FG_CLOSE = re.compile(r"^end\s*$")
+_FG_EDIT = re.compile(r"^edit\s+(?P<name>.+?)\s*$")
+_FG_NEXT = re.compile(r"^next\s*$")
 _FG_SET = re.compile(r"^(?:set|unset)\s+(?P<key>\S+)(?:\s+(?P<value>.*))?$")
 
 _CISCO_MARKERS = (
@@ -61,6 +63,7 @@ def detect_vendor(raw: str) -> str:
 
 def _parse_fortigate(raw: str) -> list[Statement]:
     stack: list[str] = []
+    objects: dict[int, str] = {}
     out: list[Statement] = []
     for line in raw.splitlines():
         text = line.strip()
@@ -72,8 +75,15 @@ def _parse_fortigate(raw: str) -> list[Statement]:
             stack.append(block)
             continue
         if _FG_CLOSE.match(text):
+            objects.pop(len(stack), None)
             if stack:
                 stack.pop()
+            continue
+        if match := _FG_EDIT.match(text):
+            objects[len(stack)] = match.group("name").strip().strip('"')
+            continue
+        if _FG_NEXT.match(text):
+            objects.pop(len(stack), None)
             continue
         if match := _FG_SET.match(text):
             out.append(
@@ -81,6 +91,7 @@ def _parse_fortigate(raw: str) -> list[Statement]:
                     tuple(stack),
                     match.group("key"),
                     (match.group("value") or "").strip(),
+                    object=objects.get(len(stack), ""),
                 )
             )
     return out

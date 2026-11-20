@@ -39,11 +39,17 @@ WEIGHTS: dict[Severity, int] = {
 
 @dataclass(frozen=True)
 class Statement:
-    """One normalized config line, flattened as ``path|key=value``."""
+    """One normalized config line, flattened as ``path|key=value``.
+
+    ``object`` carries the enclosing ``edit`` target so the evidence can name
+    the exact interface or policy without polluting the match path. Rules match
+    on :attr:`flat`, reports read :attr:`evidence`.
+    """
 
     path: tuple[str, ...]
     key: str
     value: str
+    object: str = ""
 
     @property
     def flat(self) -> str:
@@ -51,7 +57,7 @@ class Statement:
 
     @property
     def evidence(self) -> str:
-        return self.flat
+        return f"[{self.object}] {self.flat}" if self.object else self.flat
 
 
 @dataclass

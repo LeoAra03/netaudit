@@ -22,6 +22,25 @@ def test_unknown_vendor_raises() -> None:
         parser.parse("nothing useful here")
 
 
+def test_fortigate_nesting_and_object() -> None:
+    raw = 'config system interface\n    edit "port3"\n        set allowaccess ping\n    next\nend\n'
+    statements = parser.parse(raw, "fortigate").statements
+    target = next(s for s in statements if s.key == "allowaccess")
+    assert target.path == ("system.interface",)
+    assert target.flat == "system.interface|allowaccess=ping"
+    assert target.evidence == "[port3] system.interface|allowaccess=ping"
+
+
+def test_fortigate_object_does_not_leak_into_the_path() -> None:
+    """The object name must not become part of the match path, or every anchored
+    rule in the rulepacks breaks. Regression from the first parser attempt."""
+
+    raw = 'config system global\n    edit "x"\n        set hostname fw\n    next\nend\n'
+    statements = parser.parse(raw, "fortigate").statements
+    host = next(s for s in statements if s.key == "hostname")
+    assert host.flat == "system.global|hostname=fw"
+
+
 def test_fortigate_config_header_is_a_statement() -> None:
     """The opening line becomes a statement, which is how FG-005 detects a
     missing block without special-casing the parser."""
