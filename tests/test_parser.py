@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 
 from netaudit import parser
@@ -69,6 +71,25 @@ def test_cisco_context_opens_and_closes() -> None:
     assert statements[2].path == ()
 
 
+def test_cisco_two_word_context() -> None:
+    raw = (
+        "ip access-list extended IN\n"
+        " permit tcp any any eq 22\n"
+        "!\n"
+        "ip route 0.0.0.0 0.0.0.0 10.0.0.1\n"
+    )
+    statements = parser.parse(raw, "cisco").statements
+    assert statements[1].path == ("ip access-list extended IN",)
+    assert statements[2].path == ()
+
+
+def test_cisco_blank_lines_and_end_reset_context() -> None:
+    raw = "interface Gi0/1\n\n ip address 10.0.0.1 255.255.255.0\nend\nhostname r1\n"
+    statements = parser.parse(raw, "cisco").statements
+    assert statements[1].path == ("interface Gi0/1",)
+    assert statements[2].path == ()
+
+
 def test_indented_line_without_context_is_kept() -> None:
     statements = parser.parse(" hostname r1\n", "cisco").statements
     assert statements[0].flat == "|hostname=r1"
@@ -76,3 +97,20 @@ def test_indented_line_without_context_is_kept() -> None:
 
 def test_vendor_is_case_insensitive() -> None:
     assert parser.parse("config system global\nend\n", "FortiGate").vendor == "fortigate"
+
+
+def test_oversize_rejected() -> None:
+    with pytest.raises(ValueError, match="exceeds"):
+        parser.parse("config system global\n" + "#" * parser.MAX_BYTES, "fortigate")
+
+
+def test_real_fixtures_parse_without_error(config_text: Callable[[str], str]) -> None:
+    for name, vendor in (
+        ("fortigate_bad.conf", "fortigate"),
+        ("fortigate_good.conf", "fortigate"),
+        ("cisco_bad.conf", "cisco"),
+        ("cisco_good.conf", "cisco"),
+    ):
+        config = parser.parse(config_text(name))
+        assert config.vendor == vendor
+        assert config.statements
