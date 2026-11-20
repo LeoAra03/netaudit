@@ -12,7 +12,24 @@ import sys
 from pathlib import Path
 
 from . import __version__, engine, parser, reporters, scoring
-from .rulepacks import RulepackError, load_rulepack
+from .models import Rule
+from .rulepacks import RulepackError, available_packs, load_rulepack
+
+
+def _percent(raw: str) -> int:
+    """``--fail-under`` is a score, so anything outside 0-100 is a typo.
+
+    ``--fail-under 150`` used to fail every scan and ``--fail-under -1`` never
+    fail one, both silently.
+    """
+
+    try:
+        value = int(raw)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a score: {raw!r}") from None
+    if not 0 <= value <= 100:
+        raise argparse.ArgumentTypeError(f"score must be 0-100, got {value}")
+    return value
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,12 +46,79 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["table", "json", "sarif", "markdown"],
         help="output shape (table for humans, sarif for code scanning)",
     )
-    scan.add_argument("--fail-under", type=int, default=None, metavar="N", help="exit 1 below N")
+    scan.add_argument(
+        "--fail-under", type=_percent, default=None, metavar="N", help="exit 1 below N (0-100)"
+    )
+    scan.add_argument(
+        "--per-object",
+        action="store_true",
+        help="report once per object instead of once per rule",
+    )
+
+    rules = sub.add_parser("rules", help="list the checks a rulepack runs")
+    rules.add_argument("--pack", default="auto", choices=["auto", "fortigate", "cisco"])
+    rules.add_argument("--format", default="table", choices=["table", "json"], help="output shape")
     return root
+
+
+def _rules_table(rows: list[tuple[str, Rule]]) -> str:
+    header = ("pack", "id", "severity", "expect", "scope", "title")
+    body = [
+        (
+            pack,
+            rule.id,
+            rule.severity.name,
+            rule.expect,
+            ",".join(rule.scope) or "-",
+            rule.title,
+        )
+        for pack, rule in rows
+    ]
+    widths = [max(len(str(cell)) for cell in column) for column in zip(header, *body, strict=True)]
+    lines = ["  ".join(cell.ljust(width) for cell, width in zip(header, widths, strict=True))]
+    lines += [
+        "  ".join(str(cell).ljust(width) for cell, width in zip(row, widths, strict=True))
+        for row in body
+    ]
+    return "\n".join(lines)
+
+
+def _rule_dict(rule: Rule) -> dict[str, object]:
+    return {
+        "id": rule.id,
+        "title": rule.title,
+        "severity": rule.severity.name,
+        "expect": rule.expect,
+        "scope": list(rule.scope),
+        "reference": rule.reference,
+    }
+
+
+def _cmd_rules(args: argparse.Namespace) -> int:
+    packs = available_packs() if args.pack == "auto" else [args.pack]
+    try:
+        loaded = {pack: load_rulepack(pack) for pack in packs}
+    except RulepackError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if args.format == "json":
+        payload = {
+            "packs": [
+                {"name": pack, "rules": [_rule_dict(rule) for rule in rules]}
+                for pack, rules in loaded.items()
+            ]
+        }
+        print(json.dumps(payload, indent=2))
+    else:
+        print(_rules_table([(pack, rule) for pack, rules in loaded.items() for rule in rules]))
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "rules":
+        return _cmd_rules(args)
 
     try:
         raw = args.path.read_text(encoding="utf-8", errors="replace")
@@ -48,6 +132,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     pack = vendor if args.rulepack == "auto" else args.rulepack
+    if pack != vendor:
+        # The HTTP surface refuses this too: the other vendor's pack finds none
+        # of its own markers and reports every "expect: present" rule as missing,
+        # which reads as a failed audit of a device it never looked at.
+        print(
+            f"error: rulepack {pack!r} does not match detected vendor {vendor!r}",
+            file=sys.stderr,
+        )
+        return 2
     try:
         config = parser.parse(raw, vendor)
     except ValueError as exc:
@@ -55,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        findings = engine.evaluate(config, load_rulepack(pack))
+        findings = engine.evaluate(config, load_rulepack(pack), per_object=args.per_object)
     except RulepackError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -84,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{args.path}  vendor={vendor}  score={value}  grade={letter}")
         for finding in findings:
             print(f"  [{finding.severity.name:<8}] {finding.rule_id} {finding.title}")
+            print(f"             evidence: {finding.evidence}")
         if not findings:
             print("  no violations against the selected rulepack")
 
