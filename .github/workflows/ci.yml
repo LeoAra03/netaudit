@@ -67,3 +67,55 @@ jobs:
         if: always()
         with:
           sarif_file: trivy.sarif
+
+  self-scan:
+    name: netaudit audits its own sample configs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - name: Emit SARIF for both vendors
+        run: |
+          netaudit scan tests/fixtures/fortigate_bad.conf --format sarif > fortigate.sarif
+          netaudit scan tests/fixtures/cisco_bad.conf --format sarif > cisco.sarif
+      - name: Merge into one run
+        run: |
+          python3 - <<'PY'
+          import json
+
+          with open("fortigate.sarif") as handle:
+              document = json.load(handle)
+
+          rules = []
+          results = []
+          for name in ("fortigate.sarif", "cisco.sarif"):
+              with open(name) as handle:
+                  run = json.load(handle)["runs"][0]
+              rules += run["tool"]["driver"]["rules"]
+              results += run["results"]
+
+          # One (tool, category) per upload, so both vendors share a single run.
+          run = document["runs"][0]
+          run["tool"]["driver"]["rules"] = rules
+          run["results"] = results
+
+          declared = {rule["id"] for rule in rules}
+          missing = {result["ruleId"] for result in results} - declared
+          if missing:
+              raise SystemExit(f"results without a rule definition: {sorted(missing)}")
+
+          with open("netaudit.sarif", "w") as handle:
+              json.dump(document, handle, indent=2)
+          print(f"{len(results)} findings over {len(rules)} rules")
+          PY
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: netaudit.sarif
