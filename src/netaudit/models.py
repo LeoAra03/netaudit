@@ -41,9 +41,10 @@ WEIGHTS: dict[Severity, int] = {
 class Statement:
     """One normalized config line, flattened as ``path|key=value``.
 
-    ``object`` carries the enclosing ``edit`` target so the evidence can name
-    the exact interface or policy without polluting the match path. Rules match
-    on :attr:`flat`, reports read :attr:`evidence`.
+    ``object`` carries the enclosing ``edit`` target (or targets, outermost
+    first, for nested blocks such as ``1/9``) so the evidence can name the exact
+    interface or policy without polluting the match path. Rules match on
+    :attr:`flat`, reports read :attr:`evidence`.
     """
 
     path: tuple[str, ...]

@@ -114,3 +114,72 @@ def test_real_fixtures_parse_without_error(config_text: Callable[[str], str]) ->
         config = parser.parse(config_text(name))
         assert config.vendor == vendor
         assert config.statements
+
+
+def test_cisco_children_of_an_unlisted_block_stay_scoped() -> None:
+    """The parent list used to be a hardcoded keyword set, so a block it did not
+    know left its children as global commands: ``set peer 203.0.113.9`` under
+    ``crypto map VPN 10`` came out as ``|set=peer 203.0.113.9``, invisible to any
+    anchored rule and visible to every unanchored one."""
+
+    raw = "crypto map VPN 10 ipsec-isakmp\n set peer 203.0.113.9\n!\nhostname r1\n"
+    statements = parser.parse(raw, "cisco").statements
+    assert statements[1].path == ("crypto map VPN 10 ipsec-isakmp",)
+    assert statements[1].flat == "crypto map VPN 10 ipsec-isakmp|set=peer 203.0.113.9"
+    assert statements[2].path == ()
+
+
+def test_cisco_keeps_every_nesting_level() -> None:
+    raw = "policy-map LLQ\n class VOICE\n  priority 100\n class class-default\n  fair-queue\n"
+    statements = parser.parse(raw, "cisco").statements
+    assert statements[2].path == ("policy-map LLQ", "class VOICE")
+    assert statements[4].path == ("policy-map LLQ", "class class-default")
+
+
+def test_cisco_tab_indentation_nests() -> None:
+    raw = "interface Gi0/1\n\tip address 10.0.0.1 255.255.255.0\n"
+    statements = parser.parse(raw, "cisco").statements
+    assert statements[1].path == ("interface Gi0/1",)
+
+
+def test_cisco_sibling_parent_opens_a_new_block() -> None:
+    raw = "interface Gi0/1\n description WAN\ninterface Gi0/2\n description LAN\n"
+    statements = parser.parse(raw, "cisco").statements
+    assert statements[1].path == ("interface Gi0/1",)
+    assert statements[3].path == ("interface Gi0/2",)
+
+
+def test_cisco_bang_closes_every_open_block() -> None:
+    raw = "policy-map LLQ\n class VOICE\n  priority 100\n!\nhostname r1\n"
+    statements = parser.parse(raw, "cisco").statements
+    assert statements[-1].path == ()
+
+
+def test_fortigate_nested_edits_keep_every_object_name() -> None:
+    """A secondary-IP entry has no identity of its own: ``[9]`` alone points at
+    every interface's first secondary IP, not at the one that is misconfigured."""
+
+    raw = (
+        "config system interface\n"
+        '    edit "port1"\n'
+        "        config secondaryip\n"
+        "            edit 9\n"
+        "                set ip 10.0.0.9 255.255.255.0\n"
+        "            next\n"
+        "        end\n"
+        "    next\n"
+        "end\n"
+    )
+    statements = parser.parse(raw, "fortigate").statements
+    ip = next(s for s in statements if s.key == "ip")
+    assert ip.object == "port1/9"
+    assert ip.evidence == "[port1/9] system.interface.secondaryip|ip=10.0.0.9 255.255.255.0"
+
+
+def test_fortigate_config_statement_names_the_open_object() -> None:
+    raw = (
+        "config firewall policy\n    edit 3\n        config something\n        end\n    next\nend\n"
+    )
+    statements = parser.parse(raw, "fortigate").statements
+    nested = next(s for s in statements if s.key == "config" and s.value == "something")
+    assert nested.evidence == "[3] firewall.policy|config=something"

@@ -31,23 +31,14 @@ _CISCO_MARKERS = (
     "hostname ",
 )
 
-# A Cisco sub-config is any indented block under one of these parents. The
-# parent list matters: if a keyword is missing here, its children are read as
-# global commands and anchored rules stop matching.
-_CISCO_CONTEXT = {
-    "interface",
-    "line",
-    "router",
-    "policy-map",
-    "class-map",
-    "route-map",
-    "ip access-list",
-    "ipv6 access-list",
-    "key chain",
-    "crypto isakmp",
-    "crypto pki",
-    "vlan",
-}
+_CISCO_BLOCK_ENDS = {"!", "end"}
+
+
+def _indent_width(line: str) -> int:
+    """Leading whitespace width, with tabs expanded so the two mix sanely."""
+
+    stripped = line.lstrip()
+    return len(line[: len(line) - len(stripped)].expandtabs(8))
 
 
 def detect_vendor(raw: str) -> str:
@@ -61,6 +52,18 @@ def detect_vendor(raw: str) -> str:
     return "unknown"
 
 
+def _object_chain(objects: dict[int, str], depth: int) -> str:
+    """Names of every enclosing ``edit``, outermost first.
+
+    A statement nested two edits deep (``config system interface`` > ``edit
+    "port1"`` > ``config secondaryip`` > ``edit 1``) belongs to both of them. The
+    old lookup by depth alone reported the innermost name, so the evidence
+    pointed at a secondary IP ``1`` that exists on every interface.
+    """
+
+    return "/".join(objects[level] for level in sorted(objects) if level <= depth)
+
+
 def _parse_fortigate(raw: str) -> list[Statement]:
     stack: list[str] = []
     objects: dict[int, str] = {}
@@ -71,7 +74,9 @@ def _parse_fortigate(raw: str) -> list[Statement]:
             continue
         if match := _FG_OPEN.match(text):
             block = match.group("path").strip().replace(" ", ".")
-            out.append(Statement(tuple(stack), "config", block))
+            out.append(
+                Statement(tuple(stack), "config", block, object=_object_chain(objects, len(stack)))
+            )
             stack.append(block)
             continue
         if _FG_CLOSE.match(text):
@@ -91,30 +96,41 @@ def _parse_fortigate(raw: str) -> list[Statement]:
                     tuple(stack),
                     match.group("key"),
                     (match.group("value") or "").strip(),
-                    object=objects.get(len(stack), ""),
+                    object=_object_chain(objects, len(stack)),
                 )
             )
     return out
 
 
 def _parse_cisco(raw: str) -> list[Statement]:
-    context: tuple[str, ...] = ()
+    """One statement per line, nested by indentation.
+
+    IOS blocks are structural, not keyword-specific: a line's parents are the
+    enclosing lines indented less than it. Deriving the tree from indentation
+    instead of a keyword list is what keeps the children of *every* block
+    (``crypto map``, ``ip dhcp pool``, ``ip sla``, ``monitor session``,
+    ``track``...) inside that block. A hardcoded parent list silently drops the
+    blocks it does not know, and their children then read as global commands,
+    where anchored per-block rules can never reach them -- measured on a real
+    IOS config: ``set peer 203.0.113.9`` under ``crypto map VPN 10`` came out as
+    the global statement ``|set=peer 203.0.113.9``.
+    """
+
+    stack: list[tuple[int, str]] = []
     out: list[Statement] = []
     for line in raw.splitlines():
         text = line.strip()
         if not text:
             continue
-        if text in {"!", "end"}:
-            context = ()
+        if text in _CISCO_BLOCK_ENDS:
+            stack.clear()
             continue
+        width = _indent_width(line)
+        while stack and stack[-1][0] >= width:
+            stack.pop()
         head, _, tail = text.partition(" ")
-        if line[:1].isspace():
-            out.append(Statement(context, head, tail.strip()))
-            continue
-        out.append(Statement((), head, tail.strip()))
-        prefix = " ".join(text.split()[:2]).lower()
-        in_context = head.lower() in _CISCO_CONTEXT or prefix in _CISCO_CONTEXT
-        context = (text,) if in_context else ()
+        out.append(Statement(tuple(parent for _, parent in stack), head, tail.strip()))
+        stack.append((width, text))
     return out
 
 
