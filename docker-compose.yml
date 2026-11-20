@@ -1,0 +1,22 @@
+services:
+  netaudit:
+    build: .
+    image: netaudit:dev
+    init: true
+    ports:
+      - "8000:8000"
+    volumes:
+      - netaudit-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 256m
+    restart: unless-stopped
+
+volumes:
+  netaudit-data:
