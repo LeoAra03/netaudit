@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Report {{ scan.id }}{% endblock %}
+{% block content %}
+<p><a href="/">← new scan</a></p>
+<div class="card">
+  <p class="muted" style="margin:0">{{ scan.filename }} · {{ scan.vendor }} · {{ scan.created_at }}</p>
+  <p class="score">{{ scan.score }}/100 <span style="font-size:1rem">grade {{ scan.grade }}</span></p>
+  <p class="muted">{{ scan.findings | length }} finding(s). Export:
+    <a href="/scans/{{ scan.id }}/report.md">Markdown</a> ·
+    <a href="/scans/{{ scan.id }}/report.sarif">SARIF</a></p>
+</div>
+{% for f in scan.findings %}
+<div class="card">
+  <p><span class="sev {{ f.severity }}">{{ f.severity }}</span>
+     <strong>{{ f.rule_id }}</strong> — {{ f.title }}</p>
+  <p><code>{{ f.evidence }}</code></p>
+  <p>{{ f.remediation }}</p>
+  <p class="muted">{{ f.reference }}</p>
+</div>
+{% else %}
+<div class="card">No violations against the selected rulepack.</div>
+{% endfor %}
+{% endblock %}
