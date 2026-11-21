@@ -1,8 +1,11 @@
 # NetAudit
 
-[![ci](https://github.com/LeoAra03/netaudit/actions/workflows/ci.yml/badge.svg)](https://github.com/LeoAra03/netaudit/actions/workflows/ci.yml)
-[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)](pyproject.toml)
+[![ci](https://github.com/LeoAra03/netaudit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LeoAra03/netaudit/actions/workflows/ci.yml)
+[![coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/LeoAra03/netaudit/blob/main/pyproject.toml)
+[![python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)](https://github.com/LeoAra03/netaudit/blob/main/pyproject.toml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/LeoAra03/netaudit/blob/main/LICENSE)
+
+**Estado:** beta funcional, sin auth ni multi-worker. Uso previsto: gate de CI sobre configs exportadas, no auditoría en vivo. Las limitaciones están al final del documento, sin maquillaje.
 
 Audit FortiGate and Cisco IOS configurations against a declarative baseline and get a
 scored report with remediation steps. It ships as a CLI gate and a small web UI, and it
@@ -185,3 +188,7 @@ test that caught each one are logged in [docs/ai-workflow.md](docs/ai-workflow.m
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Autor
+
+Leonardo Araya — proyecto personal de seguridad de redes. Issues y pull requests son bienvenidos; el detalle del flujo de revisión con asistencia de IA está en [docs/ai-workflow.md](docs/ai-workflow.md).
