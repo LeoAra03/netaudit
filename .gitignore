@@ -15,3 +15,14 @@ htmlcov/
 *.db-shm
 .env
 .DS_Store
+.venv/
+__pycache__/
+*.pyc
+.coverage
+coverage.xml
+netaudit.db
+trivy.sarif
+netaudit.sarif
+fortigate.sarif
+cisco.sarif
+verify.log
