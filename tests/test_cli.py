@@ -83,3 +83,60 @@ def test_cli_undetectable_file(capsys, tmp_path: Path) -> None:
 def test_cli_missing_file(capsys, tmp_path: Path) -> None:
     assert main(["scan", str(tmp_path / "nope.conf")]) == 2
     assert "cannot read" in capsys.readouterr().err
+
+
+def test_cli_explain_shows_triggering_flat_statement(capsys, fixtures_dir: Path) -> None:
+    assert main(["scan", _path(fixtures_dir, "fortigate_bad.conf"), "--explain"]) == 0
+    out = capsys.readouterr().out
+    assert "FG-001" in out
+    assert "evidence: system.global|admin-telnet=enable" in out
+    assert "rulepack: src/netaudit/rulepacks/fortigate.yaml:5 (FG-001)" in out
+    assert "match: ^system\\.global\\|admin-telnet=enable" in out
+    assert "scope: system.global" in out
+
+
+def test_cli_diff_only_emits_new_findings(capsys, fixtures_dir: Path) -> None:
+    assert (
+        main(
+            [
+                "diff",
+                _path(fixtures_dir, "fortigate_bad.conf"),
+                _path(fixtures_dir, "fortigate_good.conf"),
+            ]
+        )
+        == 0
+    )
+    assert capsys.readouterr().out.strip() == "No newly introduced findings."
+
+
+def test_cli_diff_is_a_gate_when_findings_are_introduced(capsys, fixtures_dir: Path) -> None:
+    assert (
+        main(
+            [
+                "diff",
+                _path(fixtures_dir, "cisco_good.conf"),
+                _path(fixtures_dir, "cisco_bad.conf"),
+                "--format",
+                "json",
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert isinstance(payload, list)
+    assert {finding["rule_id"] for finding in payload} >= {"CS-001"}
+    assert all("resolved" not in finding for finding in payload)
+
+
+def test_cli_diff_rejects_different_vendors(capsys, fixtures_dir: Path) -> None:
+    assert (
+        main(
+            [
+                "diff",
+                _path(fixtures_dir, "fortigate_good.conf"),
+                _path(fixtures_dir, "cisco_good.conf"),
+            ]
+        )
+        == 2
+    )
+    assert "different vendors" in capsys.readouterr().err
