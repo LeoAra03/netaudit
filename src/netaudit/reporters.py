@@ -7,7 +7,8 @@ import json
 from collections.abc import Iterable
 from typing import Any
 
-from .models import Finding
+from . import __version__
+from .models import EXPOSURE_MULTIPLIERS, Finding
 
 _SARIF_LEVEL = {"CRITICAL": "error", "HIGH": "error", "MEDIUM": "warning"}
 _SARIF_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "INFO": 0}
@@ -29,10 +30,12 @@ def markdown(
     if not items:
         lines.append("No violations against the selected rulepack.")
     for finding in items:
+        multiplier = EXPOSURE_MULTIPLIERS[finding.exposure]
         lines += [
             f"## [{finding.severity.name}] {finding.rule_id} - {finding.title}",
             "",
             f"- Evidence: `{finding.evidence}`",
+            f"- Exposure: {finding.exposure.value} (x{multiplier})",
             f"- Remediation: {finding.remediation}",
             f"- Reference: {finding.reference}",
             "",
@@ -110,7 +113,7 @@ def sarif(filename: str, findings: Iterable[Finding]) -> str:
                     "driver": {
                         "name": "netaudit",
                         "informationUri": "https://github.com/LeoAra03/netaudit",
-                        "version": "0.1.0",
+                        "version": __version__,
                         "rules": rules,
                     }
                 },

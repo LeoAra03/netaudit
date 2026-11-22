@@ -12,7 +12,8 @@
 {% for f in scan.findings %}
 <div class="card">
   <p><span class="sev {{ f.severity }}">{{ f.severity }}</span>
-     <strong>{{ f.rule_id }}</strong> — {{ f.title }}</p>
+     <strong>{{ f.rule_id }}</strong> — {{ f.title }}
+     {% if f.exposure %}<span class="muted">· {{ f.exposure }}</span>{% endif %}</p>
   <p><code>{{ f.evidence }}</code></p>
   <p>{{ f.remediation }}</p>
   <p class="muted">{{ f.reference }}</p>

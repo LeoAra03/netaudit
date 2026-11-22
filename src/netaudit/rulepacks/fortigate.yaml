@@ -5,71 +5,134 @@ rules:
   - id: FG-001
     title: Telnet administration enabled
     severity: high
+    exposure: management
     scope: ["system.global"]
     match: '^system\.global\|admin-telnet=enable'
     remediation: "set admin-telnet disable; keep SSH and HTTPS only."
+    rationale: "Telnet ships credentials and session data in cleartext; anyone on the path can capture an administrative session."
+    controls:
+      cis: "4.4"
+      nist: "3.1"
+      iso: "A.8.20"
+      azure_waf: "SE:05"
     reference: "CIS FortiGate Benchmark - administrative access"
 
   - id: FG-002
     title: Legacy TLS allowed on admin GUI
     severity: medium
+    exposure: internet
     scope: ["system.global"]
     match: 'admin-https-ssl-versions=tlsv1-0|admin-https-ssl-versions=tlsv1-1'
     remediation: "set admin-https-ssl-versions tlsv1-2 tlsv1-3"
+    rationale: "TLS 1.0 and 1.1 are deprecated with known weaknesses, so a public admin GUI negotiates a downgradeable cipher suite."
+    controls:
+      cis: "4.4"
+      nist: "3.1"
+      iso: "A.8.24"
+      azure_waf: "SE:07"
     reference: "CIS FortiGate Benchmark - GUI TLS"
 
   - id: FG-003
     title: Plain HTTP allowed on an interface
     severity: medium
+    exposure: management
     scope: ["system.interface"]
     match: '^system\.interface\|allowaccess=.*\bhttp\b'
     remediation: "Remove http from allowaccess and redirect to HTTPS."
+    rationale: "HTTP on an admin interface exposes credentials and session cookies to anyone who can reach that interface."
+    controls:
+      cis: "4.4"
+      nist: "3.1"
+      iso: "A.8.20"
+      azure_waf: "SE:05"
     reference: "CIS FortiGate Benchmark - interface access"
 
   - id: FG-004
     title: Default SNMP community name
     severity: low
+    exposure: management
     scope: ["system.snmp.community"]
     match: '^system\.snmp\.community\|(community|name)=public'
     remediation: "Use a non-default community string and restrict the hosts that may query it."
+    rationale: "The default community string is public knowledge; with it an attacker reads configuration and interface counters."
+    controls:
+      cis: "4.4"
+      nist: "3.3"
+      iso: "A.5.17"
+      azure_waf: "SE:05"
     reference: "CIS FortiGate Benchmark - SNMP"
 
   - id: FG-005
     title: Password policy block missing
     severity: medium
+    exposure: management
     match: '^\|config=system\.password-policy$'
     expect: present
     remediation: "Add a config system password-policy block with status enable."
+    rationale: "Without a password policy the device accepts short, reused and never-expiring credentials for every account."
+    controls:
+      cis: "5.2"
+      nist: "3.4"
+      iso: "A.5.17"
+      azure_waf: "SE:05"
     reference: "CIS FortiGate Benchmark - password policy"
 
   - id: FG-006
     title: Password policy disabled
     severity: high
+    exposure: management
     scope: ["system.password-policy"]
     match: '^system\.password-policy\|status=disable'
     remediation: "set status enable under config system password-policy."
+    rationale: "A disabled password policy is the same as no policy: local accounts keep weak passwords forever."
+    controls:
+      cis: "5.2"
+      nist: "3.4"
+      iso: "A.5.17"
+      azure_waf: "SE:05"
     reference: "CIS FortiGate Benchmark - password policy"
 
   - id: FG-007
     title: Admin trusted host unrestricted
     severity: high
+    exposure: management
     scope: ["system.admin"]
     match: 'trusthost[0-9]+=0\.0\.0\.0 0\.0\.0\.0'
     remediation: "Restrict trusthost to the management subnet."
+    rationale: "0.0.0.0/0 on the trust host lets every network reach the management plane, defeating network segmentation."
+    controls:
+      cis: "4.7"
+      nist: "3.2"
+      iso: "A.8.20"
+      azure_waf: "SE:05"
     reference: "CIS FortiGate Benchmark - trusted hosts"
 
   - id: FG-008
     title: Logging disabled
     severity: medium
+    exposure: internal
     scope: ["log.setting"]
     match: '^log\.setting\|status=disable'
     remediation: "set status enable under config log setting."
+    rationale: "Without device logging there is no evidence trail for an incident, and every audit finding becomes hearsay."
+    controls:
+      cis: "8.2"
+      nist: "3.5"
+      iso: "A.8.15"
+      azure_waf: "OE:04"
     reference: "CIS FortiGate Benchmark - logging"
 
   - id: FG-009
     title: Firewall policy permits any-any
     severity: medium
+    exposure: internet
     scope: ["firewall.policy"]
     match: '^firewall\.policy\|(srcaddr|dstaddr)=all'
     remediation: "Narrow source and destination on policies that use all."
+    rationale: "An any-any policy collapses the firewall to a cable: any source reaches any destination with no inspection."
+    controls:
+      cis: "4.4"
+      nist: "2.2"
+      iso: "A.8.20"
+      azure_waf: "SE:05"
     reference: "CIS FortiGate Benchmark - policy scope"
