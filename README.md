@@ -5,7 +5,11 @@
 [![python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)](https://github.com/LeoAra03/netaudit/blob/main/pyproject.toml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/LeoAra03/netaudit/blob/main/LICENSE)
 
-**Estado:** beta funcional, sin auth ni multi-worker. Uso previsto: gate de CI sobre configs exportadas, no auditoría en vivo. Las limitaciones están al final del documento, sin maquillaje.
+![40-second terminal demo: failing and passing FortiGate config scans](docs/assets/netaudit-scan.gif)
+
+**Status:** functional beta, no auth, no multi-worker. Intended use: CI gate over exported configs, not live auditing. Limitations at the end of this document, no cosmetics.
+
+**Versioned hardening baseline for FortiGate and Cisco, enforced as a CI gate. Findings are data, not a wiki page that rots.**
 
 Audit FortiGate and Cisco IOS configurations against a declarative baseline and get a
 scored report with remediation steps. It ships as a CLI gate and a small web UI, and it
@@ -42,10 +46,21 @@ netaudit scan device.conf --format json
 netaudit scan device.conf --format sarif > out.sarif
 netaudit scan device.conf --format markdown
 netaudit scan device.conf --fail-under 80        # exit 1 below threshold
+netaudit scan device.conf --explain             # print path|key=value evidence
+netaudit diff before.conf after.conf            # gate only on newly introduced findings
+netaudit diff before.conf after.conf --format json
 ```
 
-Exit codes: `0` clean or above the threshold, `1` below `--fail-under`, `2` unreadable
-file or undetectable vendor.
+`--explain` prints the normalized `path|key=value` statement, the rulepack source line,
+and the exact `match`/`scope` that fired.
+`diff` compares two snapshots of the same vendor and emits **only newly introduced
+findings**. It returns `1` if the newer snapshot introduces a finding, so it can gate a
+change; `0` means no new findings. It cannot verify device identity, so compare snapshots
+from the same device yourself.
+
+Exit codes: `0` clean scan, scan above threshold, or diff with no new findings; `1` scan
+below `--fail-under` or diff with newly introduced findings; `2` unreadable file,
+undetectable vendor, or invalid cross-vendor diff.
 
 ## HTTP API
 
@@ -80,12 +95,19 @@ Interactive docs at `/docs` while the server is up.
 | FG-009 | medium | firewall policy permits any-any |
 | CS-001 | high | VTY lines accept telnet |
 | CS-002 | medium | HTTP server enabled |
+| CS-003 | low | default SNMP community |
 | CS-004 | medium | `service password-encryption` absent |
 | CS-005 | high | AAA not enabled |
+| CS-006 | low | no syslog host configured |
 | CS-007 | high | cleartext password on a local user |
 
-Full lists, including the reference each rule came from, live in
-[`src/netaudit/rulepacks/`](src/netaudit/rulepacks). A rule looks like this:
+The full rule-to-control crosswalk, with exact section identifiers, titles, and
+non-equivalent mappings called out, is in
+[`docs/cis-control-mapping.md`](docs/cis-control-mapping.md). The FortiGate rules target
+FortiOS 7.6 syntax, but the crosswalk cites the verifiable CIS FortiGate 7.4.x v1.0.0
+edition; it does not imply a 7.6-specific CIS certification. Rule definitions and their
+short operator-facing references live in [`src/netaudit/rulepacks/`](src/netaudit/rulepacks).
+A rule looks like this:
 
 ```yaml
 - id: FG-001
@@ -105,7 +127,9 @@ clean device.
 
 Each finding carries a weight (info 1, low 2, medium 5, high 10, critical 20). The score
 is `max(0, 100 - total weight)`, graded A to F. It is deterministic and deliberately
-crude: it is a triage order, not a compliance statement.
+crude: it is a triage order, not a compliance statement. The severity labels are local
+triage guidance; see [`docs/severity-rationale.md`](docs/severity-rationale.md) for why
+FG-001 is High and FG-004 is Low.
 
 ## Architecture
 
@@ -163,7 +187,6 @@ I would rather list these than have someone find them:
 ## Roadmap
 
 - [ ] Auth and per-user history
-- [ ] Diff between two snapshots of the same device
 - [ ] Per-object aggregation, so each bad interface is its own finding
 - [ ] `regex_timeout` guard for catastrophic patterns on hostile input
 - [ ] Postgres backend for multi-worker deployments
@@ -189,6 +212,6 @@ test that caught each one are logged in [docs/ai-workflow.md](docs/ai-workflow.m
 
 MIT. See [LICENSE](LICENSE).
 
-## Autor
+## Author
 
-Leonardo Araya — proyecto personal de seguridad de redes. Issues y pull requests son bienvenidos; el detalle del flujo de revisión con asistencia de IA está en [docs/ai-workflow.md](docs/ai-workflow.md).
+Leonardo Araya — personal network security project. Issues and pull requests are welcome; details of the AI-assisted review process are in [docs/ai-workflow.md](docs/ai-workflow.md).

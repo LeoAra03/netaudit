@@ -8,21 +8,21 @@ rules:
     scope: ["line vty*"]
     match: '^line vty[^|]*\|transport=input\b.*(telnet|all)'
     remediation: "transport input ssh"
-    reference: "CIS Cisco IOS Benchmark - VTY access"
+    reference: "CIS Cisco IOS 17.x v1.0.0 §1.2.2 - transport input ssh"
 
   - id: CS-002
     title: HTTP server enabled
     severity: medium
     match: '^\|ip=http server$'
     remediation: "no ip http server; prefer ip http secure-server if a GUI is really needed."
-    reference: "CIS Cisco IOS Benchmark - HTTP server"
+    reference: "CIS Cisco IOS 17.x v1.0.0 §§1.2.11, 1.6.4 (adjacent; not equivalent)"
 
   - id: CS-003
     title: Default SNMP community
     severity: low
     match: '^\|snmp-server=community (public|private)( |$)'
     remediation: "Use a non-default community and attach an ACL to it."
-    reference: "CIS Cisco IOS Benchmark - SNMP"
+    reference: "CIS Cisco IOS 17.x v1.0.0 §§1.5.2, 1.5.3 - unset private/public communities"
 
   - id: CS-004
     title: service password-encryption absent
@@ -30,7 +30,7 @@ rules:
     match: '^\|service=password-encryption$'
     expect: present
     remediation: "service password-encryption"
-    reference: "CIS Cisco IOS Benchmark - password storage"
+    reference: "CIS Cisco IOS 17.x v1.0.0 §1.4.2 - service password-encryption"
 
   - id: CS-005
     title: AAA not enabled
@@ -38,7 +38,7 @@ rules:
     match: '^\|aaa=new-model$'
     expect: present
     remediation: "Enable aaa new-model and point it at TACACS+ or RADIUS."
-    reference: "CIS Cisco IOS Benchmark - authentication"
+    reference: "CIS Cisco IOS 17.x v1.0.0 §1.1.1 - aaa new-model"
 
   - id: CS-006
     title: No syslog host configured
@@ -46,11 +46,11 @@ rules:
     match: '^\|logging=host '
     expect: present
     remediation: "logging host <syslog-server>"
-    reference: "CIS Cisco IOS Benchmark - logging"
+    reference: "CIS Cisco IOS 17.x v1.0.0 §2.2.4 - logging host"
 
   - id: CS-007
     title: Cleartext password on local user
     severity: high
     match: '^\|username=.*\spassword\s\S'
     remediation: "Use username <name> secret <hash> instead of a type-0 password."
-    reference: "CIS Cisco IOS Benchmark - local users"
+    reference: "CIS Cisco IOS 17.x v1.0.0 §1.4.3 - username secret"
