@@ -12,8 +12,8 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from . import engine, parser, reporters, scoring, store
-from .models import Finding, Severity
+from . import __version__, engine, parser, reporters, scoring, store
+from .models import Exposure, Finding, Severity
 from .rulepacks import load_rulepack
 
 BASE_DIR = Path(__file__).parent
@@ -30,7 +30,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="NetAudit",
-    version="0.1.0",
+    version=__version__,
     summary="Configuration hardening auditor for FortiGate and Cisco IOS",
     description=(
         "Upload a device configuration, get scored findings with remediation. "
@@ -94,6 +94,9 @@ def _rehydrate(record: dict[str, Any]) -> list[Finding]:
             evidence=raw["evidence"],
             remediation=raw["remediation"],
             reference=raw["reference"],
+            # Rows written before 0.2.0 carry no exposure; internal is the
+            # honest default because nothing recorded a wider blast radius.
+            exposure=Exposure(raw.get("exposure", Exposure.INTERNAL.value)),
         )
         for raw in record["findings"]
     ]

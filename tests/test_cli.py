@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from netaudit import rulepacks
 from netaudit.cli import main
 
 
@@ -70,7 +71,7 @@ def test_cli_version(capsys) -> None:
     with pytest.raises(SystemExit) as exit_info:
         main(["--version"])
     assert exit_info.value.code == 0
-    assert "netaudit 0.1.0" in capsys.readouterr().out
+    assert "netaudit 0.2.0" in capsys.readouterr().out
 
 
 def test_cli_undetectable_file(capsys, tmp_path: Path) -> None:
@@ -85,6 +86,90 @@ def test_cli_missing_file(capsys, tmp_path: Path) -> None:
     assert "cannot read" in capsys.readouterr().err
 
 
+def test_cli_scan_broken_rulepack_exits_three(
+    capsys, fixtures_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A schema-invalid pack is exit 3, not the generic 'unreadable file' 2."""
+
+    (tmp_path / "cisco.yaml").write_text("vendor: cisco\nrules: nope\n", encoding="utf-8")
+    monkeypatch.setattr(rulepacks, "RULEPACK_DIR", tmp_path)
+    assert main(["scan", _path(fixtures_dir, "cisco_bad.conf")]) == 3
+    assert "missing 'rules' list" in capsys.readouterr().err
+
+
+def test_cli_explain(capsys) -> None:
+    assert main(["explain", "FG-009"]) == 0
+    out = capsys.readouterr().out
+    assert "FG-009 — Firewall policy permits any-any" in out
+    assert "internet (x1.5)" in out
+    assert "CIS Controls v8: 4.4" in out
+    assert "Narrow source and destination" in out
+
+
+def test_cli_explain_unknown_rule(capsys) -> None:
+    assert main(["explain", "FG-999"]) == 2
+    assert "unknown rule" in capsys.readouterr().err
+
+
+def test_cli_explain_broken_pack_exits_three(
+    capsys, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "fortigate.yaml").write_text("vendor: fortigate\nrules: nope\n", encoding="utf-8")
+    monkeypatch.setattr(rulepacks, "RULEPACK_DIR", tmp_path)
+    assert main(["explain", "FG-001"]) == 3
+    assert "error:" in capsys.readouterr().err
+
+
+def test_cli_diff_adds_findings_and_exits_one(capsys, fixtures_dir: Path) -> None:
+    code = main(
+        [
+            "diff",
+            _path(fixtures_dir, "fortigate_good.conf"),
+            _path(fixtures_dir, "fortigate_bad.conf"),
+        ]
+    )
+    assert code == 1
+    out = capsys.readouterr().out
+    assert "score 100 -> " in out
+    assert "new: 8" in out and "fixed: 0" in out
+    assert "FG-001" in out
+
+
+def test_cli_diff_fixes_findings_and_exits_zero(capsys, fixtures_dir: Path) -> None:
+    code = main(
+        [
+            "diff",
+            _path(fixtures_dir, "fortigate_bad.conf"),
+            _path(fixtures_dir, "fortigate_good.conf"),
+        ]
+    )
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "new: 0" in out and "fixed: 8" in out
+    assert "FG-009" in out
+
+
+def test_cli_diff_identical_configs(capsys, fixtures_dir: Path) -> None:
+    path = _path(fixtures_dir, "cisco_bad.conf")
+    assert main(["diff", path, path]) == 0
+    out = capsys.readouterr().out
+    assert "new: 0" in out and "fixed: 0" in out
+    assert "no change in findings" in out
+
+
+def test_cli_diff_missing_file(tmp_path: Path) -> None:
+    assert main(["diff", str(tmp_path / "nope.conf"), str(tmp_path / "nope2.conf")]) == 2
+
+
+def test_cli_diff_undetectable_vendor(capsys, tmp_path: Path) -> None:
+    junk = tmp_path / "notes.txt"
+    junk.write_text("buy milk", encoding="utf-8")
+    good = tmp_path / "ok.conf"
+    good.write_text("hostname r1\n", encoding="utf-8")
+    assert main(["diff", str(good), str(junk)]) == 2
+    assert "could not be detected" in capsys.readouterr().err
+
+
 def test_cli_explain_shows_triggering_flat_statement(capsys, fixtures_dir: Path) -> None:
     assert main(["scan", _path(fixtures_dir, "fortigate_bad.conf"), "--explain"]) == 0
     out = capsys.readouterr().out
@@ -95,7 +180,9 @@ def test_cli_explain_shows_triggering_flat_statement(capsys, fixtures_dir: Path)
     assert "scope: system.global" in out
 
 
-def test_cli_diff_only_emits_new_findings(capsys, fixtures_dir: Path) -> None:
+def test_cli_diff_reports_fixed_findings_without_gate(capsys, fixtures_dir: Path) -> None:
+    """Healing a config fixes findings and introduces none: exit 0, both visible."""
+
     assert (
         main(
             [
@@ -106,7 +193,9 @@ def test_cli_diff_only_emits_new_findings(capsys, fixtures_dir: Path) -> None:
         )
         == 0
     )
-    assert capsys.readouterr().out.strip() == "No newly introduced findings."
+    out = capsys.readouterr().out
+    assert "new: 0" in out
+    assert "fixed: 8" in out
 
 
 def test_cli_diff_is_a_gate_when_findings_are_introduced(capsys, fixtures_dir: Path) -> None:

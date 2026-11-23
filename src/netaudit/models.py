@@ -7,8 +7,9 @@ vendor means a new parser, a new check means a new line of YAML.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from enum import IntEnum
+from enum import IntEnum, StrEnum
 
 
 class Severity(IntEnum):
@@ -28,12 +29,36 @@ class Severity(IntEnum):
             raise ValueError(f"unknown severity: {raw!r}") from exc
 
 
+class Exposure(StrEnum):
+    """Blast radius: how far the violated control reaches when abused."""
+
+    INTERNET = "internet"
+    MANAGEMENT = "management"
+    INTERNAL = "internal"
+
+    @classmethod
+    def parse(cls, raw: str) -> Exposure:
+        try:
+            return cls[raw.strip().upper()]
+        except KeyError as exc:
+            raise ValueError(f"unknown exposure: {raw!r}") from exc
+
+
 WEIGHTS: dict[Severity, int] = {
     Severity.INFO: 1,
     Severity.LOW: 2,
     Severity.MEDIUM: 5,
     Severity.HIGH: 10,
     Severity.CRITICAL: 20,
+}
+
+# Severity alone ranks a lab interface like a WAN interface, so every rule also
+# declares an exposure class and the score multiplies by it. Deterministic and
+# printed per finding -- a triage order, not a compliance statement.
+EXPOSURE_MULTIPLIERS: dict[Exposure, float] = {
+    Exposure.INTERNET: 1.5,
+    Exposure.MANAGEMENT: 1.2,
+    Exposure.INTERNAL: 1.0,
 }
 
 
@@ -75,9 +100,12 @@ class Rule:
     id: str
     title: str
     severity: Severity
+    exposure: Exposure
     match: str
     expect: str
     remediation: str
+    rationale: str = ""
+    controls: Mapping[str, str] = field(default_factory=dict)
     reference: str = ""
     scope: tuple[str, ...] = ()
 
@@ -92,6 +120,7 @@ class Finding:
     evidence: str
     remediation: str
     reference: str
+    exposure: Exposure = Exposure.INTERNAL
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -101,4 +130,5 @@ class Finding:
             "evidence": self.evidence,
             "remediation": self.remediation,
             "reference": self.reference,
+            "exposure": self.exposure.value,
         }

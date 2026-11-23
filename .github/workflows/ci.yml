@@ -34,6 +34,7 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check . --output-format github
       - run: ruff format --check .
+      - run: bandit -c pyproject.toml -r src
       - run: mypy
       - run: pytest --cov=netaudit --cov-report=term-missing --cov-report=xml --cov-fail-under=85
       - name: The tool must pass on its own sample configs

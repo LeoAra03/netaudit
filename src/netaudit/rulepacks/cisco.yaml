@@ -5,52 +5,101 @@ rules:
   - id: CS-001
     title: VTY lines accept telnet
     severity: high
+    exposure: management
     scope: ["line vty*"]
     match: '^line vty[^|]*\|transport=input\b.*(telnet|all)'
     remediation: "transport input ssh"
+    rationale: "Telnet on VTY lines sends credentials in cleartext to whoever answers the connection."
+    controls:
+      cis: "4.4"
+      nist: "3.1"
+      iso: "A.8.20"
+      azure_waf: "SE:05"
     reference: "CIS Cisco IOS 17.x v1.0.0 §1.2.2 - transport input ssh"
 
   - id: CS-002
     title: HTTP server enabled
     severity: medium
+    exposure: management
     match: '^\|ip=http server$'
     remediation: "no ip http server; prefer ip http secure-server if a GUI is really needed."
+    rationale: "The built-in HTTP server serves cleartext admin pages, and IOS does not need it for day-to-day operations."
+    controls:
+      cis: "4.4"
+      nist: "3.1"
+      iso: "A.8.20"
+      azure_waf: "SE:05"
     reference: "CIS Cisco IOS 17.x v1.0.0 §§1.2.11, 1.6.4 (adjacent; not equivalent)"
 
   - id: CS-003
     title: Default SNMP community
     severity: low
+    exposure: management
     match: '^\|snmp-server=community (public|private)( |$)'
     remediation: "Use a non-default community and attach an ACL to it."
+    rationale: "public and private are the first strings an attacker tries; read access leaks the configuration."
+    controls:
+      cis: "4.4"
+      nist: "3.3"
+      iso: "A.5.17"
+      azure_waf: "SE:05"
     reference: "CIS Cisco IOS 17.x v1.0.0 §§1.5.2, 1.5.3 - unset private/public communities"
 
   - id: CS-004
     title: service password-encryption absent
     severity: medium
+    exposure: management
     match: '^\|service=password-encryption$'
     expect: present
     remediation: "service password-encryption"
+    rationale: "Without service password-encryption, type-7 passwords in the config are reversible with published tooling."
+    controls:
+      cis: "3.10"
+      nist: "3.3"
+      iso: "A.5.17"
+      azure_waf: "SE:05"
     reference: "CIS Cisco IOS 17.x v1.0.0 §1.4.2 - service password-encryption"
 
   - id: CS-005
     title: AAA not enabled
     severity: high
+    exposure: management
     match: '^\|aaa=new-model$'
     expect: present
     remediation: "Enable aaa new-model and point it at TACACS+ or RADIUS."
+    rationale: "Without aaa new-model, authentication is local-only and unaudited: no central identity, no per-action accountability."
+    controls:
+      cis: "5.6"
+      nist: "3.2"
+      iso: "A.5.15"
+      azure_waf: "SE:05"
     reference: "CIS Cisco IOS 17.x v1.0.0 §1.1.1 - aaa new-model"
 
   - id: CS-006
     title: No syslog host configured
     severity: low
+    exposure: internal
     match: '^\|logging=host '
     expect: present
     remediation: "logging host <syslog-server>"
+    rationale: "A device that never logs outwards loses its evidence the moment the buffer wraps or the box is wiped."
+    controls:
+      cis: "8.2"
+      nist: "3.5"
+      iso: "A.8.15"
+      azure_waf: "OE:04"
     reference: "CIS Cisco IOS 17.x v1.0.0 §2.2.4 - logging host"
 
   - id: CS-007
     title: Cleartext password on local user
     severity: high
+    exposure: management
     match: '^\|username=.*\spassword\s\S'
     remediation: "Use username <name> secret <hash> instead of a type-0 password."
+    rationale: "A type-0 password in the configuration is readable by anyone who can run show running-config."
+    controls:
+      cis: "3.10"
+      nist: "3.3"
+      iso: "A.5.17"
+      azure_waf: "SE:05"
     reference: "CIS Cisco IOS 17.x v1.0.0 §1.4.3 - username secret"

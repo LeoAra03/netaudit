@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "netaudit"
-version = "0.1.0"
+version = "0.2.0"
 description = "Configuration hardening auditor for FortiGate and Cisco IOS with SARIF output"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -32,6 +32,7 @@ dev = [
     "httpx>=0.28",
     "ruff>=0.8",
     "mypy>=1.13",
+    "bandit>=1.8",
     "types-pyyaml",
     "pre-commit>=4.0",
 ]
@@ -77,6 +78,9 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["fastapi.*", "starlette.*", "uvicorn.*", "multipart.*"]
 ignore_missing_imports = true
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
 
 [tool.coverage.run]
 source = ["netaudit"]

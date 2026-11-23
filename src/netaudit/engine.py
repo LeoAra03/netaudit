@@ -44,6 +44,24 @@ def evaluate(config: DeviceConfig, rules: Iterable[Rule]) -> list[Finding]:
                 evidence=(hit.evidence if hit else "statement not found")[:_EVIDENCE_LIMIT],
                 remediation=rule.remediation,
                 reference=rule.reference,
+                exposure=rule.exposure,
             )
         )
     return sorted(findings, key=lambda f: f.severity, reverse=True)
+
+
+def diff(
+    before: Iterable[Finding], after: Iterable[Finding]
+) -> tuple[list[Finding], list[Finding]]:
+    """Split two scans into findings the change added and the ones it fixed.
+
+    Keyed by rule id, which is the granularity findings already collapse to:
+    ``netaudit diff`` reports new and fixed rules, not per-object churn.
+    """
+
+    old_list, new_list = list(before), list(after)
+    old_ids = {f.rule_id for f in old_list}
+    new_ids = {f.rule_id for f in new_list}
+    added = [f for f in new_list if f.rule_id not in old_ids]
+    fixed = [f for f in old_list if f.rule_id not in new_ids]
+    return added, fixed

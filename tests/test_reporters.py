@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from netaudit import reporters
-from netaudit.models import Finding, Severity
+from netaudit.models import Exposure, Finding, Severity
 
 
 def _finding(
@@ -107,3 +107,17 @@ def test_markdown_reports_every_finding() -> None:
     assert "# NetAudit report - `device.conf`" in text
     assert "CS-001" in text and "CS-002" in text
     assert "42/100" in text and "grade **D**" in text
+
+
+def test_markdown_prints_the_exposure_multiplier() -> None:
+    finding = Finding(
+        rule_id="FG-009",
+        title="t",
+        severity=Severity.MEDIUM,
+        evidence="e",
+        remediation="r",
+        reference="",
+        exposure=Exposure.INTERNET,
+    )
+    text = reporters.markdown("device.conf", "fortigate", 85, "B", [finding])
+    assert "- Exposure: internet (x1.5)" in text

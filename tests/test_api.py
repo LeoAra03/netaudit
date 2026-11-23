@@ -54,6 +54,19 @@ def test_scan_returns_findings(client: TestClient, fixtures_dir: Path) -> None:
     assert any(f["rule_id"] == "FG-001" for f in body["findings"])
 
 
+def test_findings_carry_exposure(client: TestClient, fixtures_dir: Path) -> None:
+    """The exposure survives the JSON -> SQLite -> rehydrate round trip."""
+
+    body = _post(client, fixtures_dir, "fortigate_bad.conf").json()
+    exposure = {f["rule_id"]: f["exposure"] for f in body["findings"]}
+    assert exposure["FG-009"] == "internet"
+    assert exposure["FG-001"] == "management"
+
+    scan_id = body["id"]
+    page = client.get(f"/scans/{scan_id}/report.md")
+    assert "internet (x1.5)" in page.text
+
+
 def test_index_lists_recent_scans(client: TestClient, fixtures_dir: Path) -> None:
     _post(client, fixtures_dir, "cisco_bad.conf")
     page = client.get("/")

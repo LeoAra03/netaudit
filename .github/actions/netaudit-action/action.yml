@@ -1,0 +1,25 @@
+name: netaudit
+description: Audit a network configuration and fail below a score threshold
+inputs:
+  config:
+    description: Path to the exported device configuration to audit
+    required: true
+  fail-under:
+    description: Minimum score (0-100) required for the gate to pass
+    default: "80"
+  sarif:
+    description: Path where the SARIF report is written before upload
+    default: "netaudit.sarif"
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: pipx install "git+https://github.com/LeoAra03/netaudit@${{ github.action_ref }}"
+    - shell: bash
+      run: netaudit scan "${{ inputs.config }}" --format sarif > "${{ inputs.sarif }}" || true
+    - if: always()
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: ${{ inputs.sarif }}
+    - shell: bash
+      run: netaudit scan "${{ inputs.config }}" --fail-under "${{ inputs.fail-under }}"
