@@ -2,8 +2,9 @@
 
 ``netaudit scan device.conf --fail-under 80`` exits 1 below the threshold, so a
 pipeline can block a config push without parsing the report. ``netaudit diff``
-exits 1 when the second config adds findings, and ``netaudit explain`` settles
-the argument about a rule before anyone edits the threshold instead.
+exits 1 when the second config adds findings, ``scan --explain`` shows the
+statement that triggered each finding, and ``netaudit explain`` settles the
+argument about a rule before anyone edits the threshold instead.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import sys
 from pathlib import Path
 
 from . import __version__, engine, parser, reporters, scoring
-from .models import EXPOSURE_MULTIPLIERS, Finding
+from .models import EXPOSURE_MULTIPLIERS, Finding, Rule
 from .rulepacks import RuleNotFoundError, RulepackError, find_rule, load_rulepack
 
 _CONTROL_LABELS = {
@@ -40,17 +41,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="output shape (table for humans, sarif for code scanning)",
     )
     scan.add_argument("--fail-under", type=int, default=None, metavar="N", help="exit 1 below N")
+    scan.add_argument(
+        "--explain",
+        action="store_true",
+        help="show the path|key=value evidence that triggered each finding",
+    )
 
-    diff = sub.add_parser("diff", help="report new and fixed findings between two configs")
-    diff.add_argument("before", type=Path, help="config before the change")
-    diff.add_argument("after", type=Path, help="config after the change")
+    diff = sub.add_parser("diff", help="gate on findings newly introduced between snapshots")
+    diff.add_argument("before", type=Path, help="older snapshot")
+    diff.add_argument("after", type=Path, help="newer snapshot")
+    diff.add_argument("--rulepack", default="auto", choices=["auto", "fortigate", "cisco"])
+    diff.add_argument("--format", choices=["table", "json"], default="table")
 
     explain = sub.add_parser("explain", help="show control, rationale and remediation for one rule")
     explain.add_argument("rule_id", help="rule id, e.g. FG-009")
     return root
 
 
-def _audit(path: Path) -> tuple[str, list[Finding]] | int:
+def _audit(path: Path, rulepack: str = "auto") -> tuple[str, list[Finding], list[Rule]] | int:
     """Scan one file, or return the exit code that explains why it could not."""
 
     try:
@@ -64,23 +72,45 @@ def _audit(path: Path) -> tuple[str, list[Finding]] | int:
         print(f"error: vendor could not be detected for {path}", file=sys.stderr)
         return 2
 
+    selected = vendor if rulepack == "auto" else rulepack
     try:
         config = parser.parse(raw, vendor)
-        findings = engine.evaluate(config, load_rulepack(vendor))
+        rules = load_rulepack(selected)
+        findings = engine.evaluate(config, rules)
     except RulepackError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 3
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    return vendor, findings
+    return vendor, findings, rules
+
+
+def _rule_line(pack_name: str, rule_id: str, field: str) -> int | None:
+    """Find a rule field's source line for actionable --explain output."""
+
+    rulepack_path = Path(__file__).parent / "rulepacks" / f"{pack_name}.yaml"
+    lines = rulepack_path.read_text(encoding="utf-8").splitlines()
+    in_rule = False
+    for number, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if stripped == f"- id: {rule_id}":
+            if field == "id":
+                return number
+            in_rule = True
+            continue
+        if in_rule and stripped.startswith("- id:"):
+            break
+        if in_rule and stripped.startswith(f"{field}:"):
+            return number
+    return None
 
 
 def _scan(args: argparse.Namespace) -> int:
-    loaded = _audit(args.path)
+    loaded = _audit(args.path, args.rulepack)
     if isinstance(loaded, int):
         return loaded
-    vendor, findings = loaded
+    vendor, findings, rules = loaded
 
     value = scoring.score(findings)
     letter = scoring.grade(value)
@@ -110,6 +140,16 @@ def _scan(args: argparse.Namespace) -> int:
                 f"  [{finding.severity.name:<8}] {finding.rule_id} {finding.title}"
                 f" ({finding.exposure.value} x{multiplier})"
             )
+            if args.explain:
+                pack_name = vendor if args.rulepack == "auto" else args.rulepack
+                rule = next(rule for rule in rules if rule.id == finding.rule_id)
+                pack_file = f"src/netaudit/rulepacks/{pack_name}.yaml"
+                id_line = _rule_line(pack_name, finding.rule_id, "id")
+                match_line = _rule_line(pack_name, finding.rule_id, "match")
+                print(f"      evidence: {finding.evidence}")
+                print(f"      rulepack: {pack_file}:{id_line or '?'} ({finding.rule_id})")
+                print(f"      match: {rule.match}  [line {match_line or '?'}]")
+                print(f"      scope: {', '.join(rule.scope) or '*'}; expect: {rule.expect}")
         if not findings:
             print("  no violations against the selected rulepack")
 
@@ -119,19 +159,32 @@ def _scan(args: argparse.Namespace) -> int:
     return 0
 
 
-def _diff(before_path: Path, after_path: Path) -> int:
-    before = _audit(before_path)
+def _diff(args: argparse.Namespace) -> int:
+    before = _audit(args.before, args.rulepack)
     if isinstance(before, int):
         return before
-    after = _audit(after_path)
+    after = _audit(args.after, args.rulepack)
     if isinstance(after, int):
         return after
+    before_vendor, before_findings, _ = before
+    after_vendor, after_findings, _ = after
 
-    added, fixed = engine.diff(before[1], after[1])
-    old_score = scoring.score(before[1])
-    new_score = scoring.score(after[1])
+    if before_vendor != after_vendor:
+        print(
+            f"error: snapshots use different vendors ({before_vendor} vs {after_vendor})",
+            file=sys.stderr,
+        )
+        return 2
+
+    added, fixed = engine.diff(before_findings, after_findings)
+    if args.format == "json":
+        print(json.dumps([f.to_dict() for f in added], indent=2))
+        return 1 if added else 0
+
+    old_score = scoring.score(before_findings)
+    new_score = scoring.score(after_findings)
     print(
-        f"{before_path} -> {after_path}  score {old_score} -> {new_score}"
+        f"{args.before} -> {args.after}  score {old_score} -> {new_score}"
         f"  new: {len(added)}  fixed: {len(fixed)}"
     )
     for finding in added:
@@ -173,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "explain":
         return _explain(args.rule_id)
     if args.command == "diff":
-        return _diff(args.before, args.after)
+        return _diff(args)
     return _scan(args)
 
 

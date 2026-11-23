@@ -1,24 +1,23 @@
-# 90 second demo
+# 40-second terminal GIF
 
-Recorded in one take, real terminal, no slides, no music.
+Record one genuine terminal session (no mock output or speed-up). The sequence demonstrates
+the CI gate failing on a deliberately bad snapshot and passing on the fixed fixture.
 
-| time | what happens | line |
+| time | action | narration |
 |---|---|---|
-| 0-15s | Terminal, empty prompt. | "Network config review is manual and inconsistent, so I built a tool that makes the baseline explicit and testable." |
-| 15-35s | `netaudit scan tests/fixtures/fortigate_bad.conf` | "Score 48, grade F. Telnet on the admin plane, password policy disabled, trusted host set to anything. Each finding is one rule." |
-| 35-55s | `make run`, upload the same file in the browser | "Same audit as a page. The evidence names the exact object, `port1`, so a human can decide in a second instead of grepping the file." |
-| 55-70s | `curl -s localhost:8000/scans/<id>/report.sarif`, then the code scanning tab | "That SARIF is why this can run in a pipeline. The CI job feeds it my own bad fixtures, so the tool reviews itself." |
-| 70-85s | `git log --oneline --graph`, open one PR | "Ten pull requests, one concern each. The parser PR shows a rejected suggestion and the regression test that replaced it." |
-| 85-90s | Back to the README limitations section. | "Adding a rule is a YAML change with a fixture. The threat model lists what still blocks production." |
+| 0–5s | Show the prompt and type `netaudit scan tests/fixtures/fortigate_bad.conf --fail-under 80`. Let the command return exit code 1. | “This exported FortiGate config fails the baseline gate.” |
+| 5–24s | Keep the full output visible. Point to the high-severity Telnet finding and `path|key=value` evidence. | “The report tells us which rule fired and exactly which config statement triggered it.” |
+| 24–34s | Type `netaudit scan tests/fixtures/fortigate_good.conf --fail-under 80`. Let it return exit code 0. | “The fixed snapshot clears the same gate.” |
+| 34–40s | Hold the clean result in view. | “Same versioned rules, repeatable CI decision.” |
 
-Prep:
+Keep a readable terminal font and show both real exit codes. Use the project-installed
+`netaudit` command, capture the terminal itself, and save the reviewed 40-second result to
+`docs/assets/netaudit-scan.gif`. Do not replace real output with a typeset or synthesized
+mockup.
 
-```bash
-make cov                 # show it green first, then close the tab
-docker compose up --build  # only if the container path is in the take
-export PS1='$ '          # prompt noise ruins the recording
-```
+## SARIF screenshot
 
-Rules for the take: talk slowly, type the commands by hand, no cuts other than the
-terminal zoom. If something fails, stop and re-record; a staged failure in the demo is worse
-than a slower demo.
+The `self-scan` GitHub Actions job uploads `netaudit.sarif` to code scanning. Once that
+workflow has completed for the repository, open **Security → Code scanning** and capture
+the actual rendered findings list and one finding detail panel. Save the genuine UI capture
+to `docs/assets/github-security-sarif.png`; raw SARIF JSON is not a substitute.

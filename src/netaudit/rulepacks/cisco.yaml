@@ -15,7 +15,7 @@ rules:
       nist: "3.1"
       iso: "A.8.20"
       azure_waf: "SE:05"
-    reference: "CIS Cisco IOS Benchmark - VTY access"
+    reference: "CIS Cisco IOS 17.x v1.0.0 §1.2.2 - transport input ssh"
 
   - id: CS-002
     title: HTTP server enabled
@@ -29,7 +29,7 @@ rules:
       nist: "3.1"
       iso: "A.8.20"
       azure_waf: "SE:05"
-    reference: "CIS Cisco IOS Benchmark - HTTP server"
+    reference: "CIS Cisco IOS 17.x v1.0.0 §§1.2.11, 1.6.4 (adjacent; not equivalent)"
 
   - id: CS-003
     title: Default SNMP community
@@ -43,7 +43,7 @@ rules:
       nist: "3.3"
       iso: "A.5.17"
       azure_waf: "SE:05"
-    reference: "CIS Cisco IOS Benchmark - SNMP"
+    reference: "CIS Cisco IOS 17.x v1.0.0 §§1.5.2, 1.5.3 - unset private/public communities"
 
   - id: CS-004
     title: service password-encryption absent
@@ -58,7 +58,7 @@ rules:
       nist: "3.3"
       iso: "A.5.17"
       azure_waf: "SE:05"
-    reference: "CIS Cisco IOS Benchmark - password storage"
+    reference: "CIS Cisco IOS 17.x v1.0.0 §1.4.2 - service password-encryption"
 
   - id: CS-005
     title: AAA not enabled
@@ -73,7 +73,7 @@ rules:
       nist: "3.2"
       iso: "A.5.15"
       azure_waf: "SE:05"
-    reference: "CIS Cisco IOS Benchmark - authentication"
+    reference: "CIS Cisco IOS 17.x v1.0.0 §1.1.1 - aaa new-model"
 
   - id: CS-006
     title: No syslog host configured
@@ -88,7 +88,7 @@ rules:
       nist: "3.5"
       iso: "A.8.15"
       azure_waf: "OE:04"
-    reference: "CIS Cisco IOS Benchmark - logging"
+    reference: "CIS Cisco IOS 17.x v1.0.0 §2.2.4 - logging host"
 
   - id: CS-007
     title: Cleartext password on local user
@@ -102,4 +102,4 @@ rules:
       nist: "3.3"
       iso: "A.5.17"
       azure_waf: "SE:05"
-    reference: "CIS Cisco IOS Benchmark - local users"
+    reference: "CIS Cisco IOS 17.x v1.0.0 §1.4.3 - username secret"

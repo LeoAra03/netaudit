@@ -168,3 +168,64 @@ def test_cli_diff_undetectable_vendor(capsys, tmp_path: Path) -> None:
     good.write_text("hostname r1\n", encoding="utf-8")
     assert main(["diff", str(good), str(junk)]) == 2
     assert "could not be detected" in capsys.readouterr().err
+
+
+def test_cli_explain_shows_triggering_flat_statement(capsys, fixtures_dir: Path) -> None:
+    assert main(["scan", _path(fixtures_dir, "fortigate_bad.conf"), "--explain"]) == 0
+    out = capsys.readouterr().out
+    assert "FG-001" in out
+    assert "evidence: system.global|admin-telnet=enable" in out
+    assert "rulepack: src/netaudit/rulepacks/fortigate.yaml:5 (FG-001)" in out
+    assert "match: ^system\\.global\\|admin-telnet=enable" in out
+    assert "scope: system.global" in out
+
+
+def test_cli_diff_reports_fixed_findings_without_gate(capsys, fixtures_dir: Path) -> None:
+    """Healing a config fixes findings and introduces none: exit 0, both visible."""
+
+    assert (
+        main(
+            [
+                "diff",
+                _path(fixtures_dir, "fortigate_bad.conf"),
+                _path(fixtures_dir, "fortigate_good.conf"),
+            ]
+        )
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "new: 0" in out
+    assert "fixed: 8" in out
+
+
+def test_cli_diff_is_a_gate_when_findings_are_introduced(capsys, fixtures_dir: Path) -> None:
+    assert (
+        main(
+            [
+                "diff",
+                _path(fixtures_dir, "cisco_good.conf"),
+                _path(fixtures_dir, "cisco_bad.conf"),
+                "--format",
+                "json",
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert isinstance(payload, list)
+    assert {finding["rule_id"] for finding in payload} >= {"CS-001"}
+    assert all("resolved" not in finding for finding in payload)
+
+
+def test_cli_diff_rejects_different_vendors(capsys, fixtures_dir: Path) -> None:
+    assert (
+        main(
+            [
+                "diff",
+                _path(fixtures_dir, "fortigate_good.conf"),
+                _path(fixtures_dir, "cisco_good.conf"),
+            ]
+        )
+        == 2
+    )
+    assert "different vendors" in capsys.readouterr().err

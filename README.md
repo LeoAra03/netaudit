@@ -12,6 +12,8 @@ instead of a wiki page nobody re-reads.
 > Status: beta, no auth, single worker. Intended as a CI gate over exported configs, not a
 > live auditor. Limitations are at the bottom, unmade-up.
 
+![40-second terminal demo: failing and passing FortiGate config scans](docs/assets/netaudit-scan.gif)
+
 Manual config review does not scale and it is inconsistent between engineers. NetAudit
 makes the baseline explicit, reviewable and versionable: a new check is a YAML change plus
 a fixture, never a change to the analysis code.
@@ -55,13 +57,23 @@ restarts on its own.
 netaudit scan device.conf                    # table
 netaudit scan device.conf --format sarif > out.sarif
 netaudit scan device.conf --fail-under 80    # exit 1 below threshold
+netaudit scan device.conf --explain          # path|key=value evidence + rulepack line
 netaudit diff before.conf after.conf         # new and fixed findings
+netaudit diff before.conf after.conf --format json
 netaudit explain FG-009                      # control, rationale, remediation
 ```
 
-Exit codes: `0` clean or above threshold, `1` below `--fail-under`, `2` unreadable file or
-undetectable vendor, `3` schema-invalid rulepack. `diff` exits `1` when the second config
-adds a finding; `explain` exits `2` for a rule id nobody defines.
+`--explain` prints the normalized `path|key=value` statement, the rulepack source
+line, and the exact `match`/`scope` that fired.
+`diff` compares two snapshots of the same vendor and reports **newly introduced and
+fixed findings**. It returns `1` if the newer snapshot introduces a finding, so it can
+gate a change; `0` means no new findings. It cannot verify device identity, so compare
+snapshots from the same device yourself.
+
+Exit codes: `0` clean scan, scan above threshold, or diff with no new findings; `1` scan
+below `--fail-under` or diff with newly introduced findings; `2` unreadable file,
+undetectable vendor, invalid cross-vendor diff, or `explain` on a rule id nobody defines;
+`3` schema-invalid rulepack.
 
 ## Use it in CI
 
@@ -110,10 +122,18 @@ Full packs and references in [`src/netaudit/rulepacks/`](src/netaudit/rulepacks)
 `severity`, `exposure`, `match`, `expect` and `scope` are validated at pack load, so a
 typo fails the run instead of reporting a clean device.
 
+The full rule-to-control crosswalk, with exact section identifiers, titles, and
+non-equivalent mappings called out, is in
+[`docs/cis-control-mapping.md`](docs/cis-control-mapping.md). The FortiGate rules target
+FortiOS 7.6 syntax, but the crosswalk cites the verifiable CIS FortiGate 7.4.x v1.0.0
+edition; it does not imply a 7.6-specific CIS certification.
+
 ## Scoring
 
 `max(0, 100 - sum(severity_weight * exposure_multiplier))`, graded A-F. Deterministic and
-deliberately crude: a triage order, not a compliance statement.
+deliberately crude: a triage order, not a compliance statement. The severity labels are
+local triage guidance; see [`docs/severity-rationale.md`](docs/severity-rationale.md) for
+why FG-001 is High and FG-004 is Low.
 
 ## Security posture
 

@@ -15,7 +15,7 @@ rules:
       nist: "3.1"
       iso: "A.8.20"
       azure_waf: "SE:05"
-    reference: "CIS FortiGate Benchmark - administrative access"
+    reference: "CIS FortiGate 7.4.x v1.0.0 §2.4.5 - encrypted access channels"
 
   - id: FG-002
     title: Legacy TLS allowed on admin GUI
@@ -30,7 +30,7 @@ rules:
       nist: "3.1"
       iso: "A.8.24"
       azure_waf: "SE:07"
-    reference: "CIS FortiGate Benchmark - GUI TLS"
+    reference: "CIS FortiGate 7.4.x v1.0.0 §2.1.10 - management GUI TLS version"
 
   - id: FG-003
     title: Plain HTTP allowed on an interface
@@ -45,7 +45,7 @@ rules:
       nist: "3.1"
       iso: "A.8.20"
       azure_waf: "SE:05"
-    reference: "CIS FortiGate Benchmark - interface access"
+    reference: "CIS FortiGate 7.4.x v1.0.0 §2.4.5 - encrypted access channels"
 
   - id: FG-004
     title: Default SNMP community name
@@ -60,7 +60,7 @@ rules:
       nist: "3.3"
       iso: "A.5.17"
       azure_waf: "SE:05"
-    reference: "CIS FortiGate Benchmark - SNMP"
+    reference: "CIS FortiGate 7.4.x v1.0.0 §2.3.1 - SNMPv3 only (related; string-only check)"
 
   - id: FG-005
     title: Password policy block missing
@@ -75,7 +75,7 @@ rules:
       nist: "3.4"
       iso: "A.5.17"
       azure_waf: "SE:05"
-    reference: "CIS FortiGate Benchmark - password policy"
+    reference: "CIS FortiGate 7.4.x v1.0.0 §2.2.1 - Password Policy enabled"
 
   - id: FG-006
     title: Password policy disabled
@@ -90,7 +90,7 @@ rules:
       nist: "3.4"
       iso: "A.5.17"
       azure_waf: "SE:05"
-    reference: "CIS FortiGate Benchmark - password policy"
+    reference: "CIS FortiGate 7.4.x v1.0.0 §2.2.1 - Password Policy enabled"
 
   - id: FG-007
     title: Admin trusted host unrestricted
@@ -105,7 +105,7 @@ rules:
       nist: "3.2"
       iso: "A.8.20"
       azure_waf: "SE:05"
-    reference: "CIS FortiGate Benchmark - trusted hosts"
+    reference: "CIS FortiGate 7.4.x v1.0.0 §2.4.2 - specific trusted hosts"
 
   - id: FG-008
     title: Logging disabled
@@ -120,7 +120,7 @@ rules:
       nist: "3.5"
       iso: "A.8.15"
       azure_waf: "OE:04"
-    reference: "CIS FortiGate Benchmark - logging"
+    reference: "CIS FortiGate 7.4.x v1.0.0 §7.1.1 - Enable Event Logging (adjacent)"
 
   - id: FG-009
     title: Firewall policy permits any-any
@@ -135,4 +135,4 @@ rules:
       nist: "2.2"
       iso: "A.8.20"
       azure_waf: "SE:05"
-    reference: "CIS FortiGate Benchmark - policy scope"
+    reference: "No direct CIS match; §3.2 covers ALL as Service, not source/destination address"
